@@ -81,7 +81,9 @@ def normalize_distances(distances):
 def improved_hybrid_prototype_loss(query_embeddings, prototypes, query_labels, weights):
     euclidean_distances = torch.cdist(query_embeddings, prototypes)
     cosine_distances = 1 - cosine_similarity(query_embeddings, prototypes)
-    combined_distances = (weights['euclidean'] * euclidean_distances) + (weights['cosine'] * cosine_distances)
+    normalized_euclidean_distances = normalize_distances(euclidean_distances)
+    normalized_cosine_distances = normalize_distances(cosine_distances)
+    combined_distances = (weights['euclidean'] * normalized_euclidean_distances) + (weights['cosine'] * normalized_cosine_distances)
     predictions = torch.sigmoid(-combined_distances)
     criterion = nn.BCELoss()
     return criterion(predictions, query_labels)
@@ -186,44 +188,53 @@ def episodic_training(model, optimizer, epochs, episodes, val_dataloader, alpha=
     save_best_model_cb.load_best_model(model=model)
     return history
 
-def new_validate_with_prototypes(model, val_dataloader, weights):
+def new_validate_with_prototypes(model, dataloader, weights, alpha=1):
     model.eval()
     all_predictions = []
     all_labels = []
     total_loss = 0
 
     with torch.no_grad():
-        for inputs, labels in val_dataloader:
+        for inputs, targets in dataloader:
             embeddings = model(inputs, return_embedding=True)
-            prototypes = compute_prototypes(embeddings, labels)
-            
-            euclidean_distances = torch.cdist(embeddings, prototypes)
-            euclidean_distances = normalize_distances(euclidean_distances)
-            
-            chebyshev_distances = torch.max(torch.abs(embeddings.unsqueeze(1) - prototypes), dim=2).values
-            chebyshev_distances = normalize_distances(chebyshev_distances)
-            
-            combined_distances = weights['euclidean'] * euclidean_distances + weights['chebyshev'] * chebyshev_distances
-            
-            logits = -combined_distances
-            predictions = torch.sigmoid(logits)
-            
-            loss = nn.BCEWithLogitsLoss()(logits, labels)
+            prototypes = compute_prototypes(embeddings, targets)
+
+            distances_prot = torch.cdist(embeddings, prototypes)
+            cosine_distances = 1 - cosine_similarity(embeddings, prototypes)
+            combined_distances = (weights['euclidean'] * distances_prot) + (weights['cosine'] * cosine_distances)
+            predictions = torch.sigmoid(-combined_distances)
+
+            loss = improved_hybrid_prototype_loss(embeddings, prototypes, targets, weights)
             total_loss += loss.item()
-            
-            all_predictions.append(predictions.cpu())
-            all_labels.append(labels.cpu())
-    
+
+            all_predictions.append(predictions)
+            all_labels.append(targets)
+
     all_predictions = torch.cat(all_predictions)
     all_labels = torch.cat(all_labels)
+
+    # Convert predictions to binary (0 or 1) using 0.5 as threshold
+    max_indices = torch.argmax(all_predictions, dim=1, keepdim=True)
+    binary_predictions = torch.zeros_like(all_predictions)
+    binary_predictions.scatter_(1, max_indices, 1)
+
+    # Print some predictions and corresponding actual values for comparison
+    print("Sample Predictions vs Actual Values (Validation Set):")
+    for i in range(5):  # Print first 5 examples
+        print(f"Predictions: {binary_predictions[i].cpu().numpy()}, Actual: {all_labels[i].cpu().numpy()}")
+
+    # Calculate metrics
+    f1 = f1_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
+    precision = precision_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
+    recall = recall_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
     
-    # Calculate metrics using our custom function
-    balanced_acc, classes_acc = multi_label_balanced_accuracy(all_labels.numpy(), (all_predictions > 0.5).float().numpy())
-    f1 = f1_score(all_labels, (all_predictions > 0.5).float(), average='weighted')
-    precision = precision_score(all_labels, (all_predictions > 0.5).float(), average='weighted')
-    recall = recall_score(all_labels, (all_predictions > 0.5).float(), average='weighted')
-    
-    return balanced_acc, total_loss / len(val_dataloader), f1, precision, recall, all_predictions, classes_acc
+    # Calculate balanced accuracy using our custom function
+    balanced_acc, classes_acc = multi_label_balanced_accuracy(all_labels.cpu().numpy(), binary_predictions.cpu().numpy())
+
+    # Calculate average loss
+    avg_loss = total_loss / len(dataloader)
+
+    return balanced_acc, avg_loss, f1, precision, recall, binary_predictions, classes_acc
 
 
 def new_episodic_training(model, optimizer, epochs, episodes, val_dataloader, weights):

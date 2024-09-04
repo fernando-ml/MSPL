@@ -80,10 +80,10 @@ for i in range(n_experiments):
     
     
     print(f"Starting experiment {i+1}/{n_experiments}")
-    # experiment_history = episodic_training(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
-    #                                              epochs=n_epochs, alpha=alpha)
-    experiment_history = new_episodic_training(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
-                                           epochs=n_epochs, weights=distances_weights)
+    experiment_history = episodic_training(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
+                                                 epochs=n_epochs, alpha=alpha)
+    # experiment_history = new_episodic_training(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
+    #                                        epochs=n_epochs, weights=distances_weights)
     best_acc_per_experiment.append(max(experiment_history["balanced_accuracy"]))
     print("Episodic training completed.")
     with open(f'{train_history_path}/exp_{i}.json', 'w') as f:

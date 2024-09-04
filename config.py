@@ -28,8 +28,8 @@ n_support = 40
 n_query = 20
 n_experiments = 10
 
-n_samples = 100_000
-sample_per_class = 2
+n_samples = 100#100_000
+sample_per_class = 1
 
 distances_weights = {
     'euclidean': 0.5,
