@@ -66,7 +66,7 @@ val_dataloader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=Fals
 
 best_acc_per_experiment = []
 for i in range(n_experiments):
-    print(f"Starting experiment {i+1}/{n_experiments}")
+    print(f"\n###############################\nStarting experiment {i+1}/{n_experiments}")
     X_train_sampled, y_train_sampled = stratified_sample(datasets=[X_train, y_train], n_samples=n_samples, sample_per_class=sample_per_class)
 
     selected_model = MLP_MultiLabel(n_features=len(features_RFC), n_classes=y_train_data.shape[1])
@@ -78,12 +78,10 @@ for i in range(n_experiments):
     episodes, unique_indices = create_episodes(X_train_sampled, y_train_sampled, n_episodes, n_support, n_query)
     print(f"Total unique inputs used for training: {len(unique_indices)}")
     
-    
-    print(f"Starting experiment {i+1}/{n_experiments}")
-    experiment_history = episodic_training(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
-                                                 epochs=n_epochs, alpha=alpha)
-    # experiment_history = new_episodic_training(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
-    #                                        epochs=n_epochs, weights=distances_weights)
+    # experiment_history = episodic_training(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
+    #                                              epochs=n_epochs, alpha=alpha)
+    experiment_history = new_episodic_training_with_polyak(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
+                                           epochs=n_epochs, weights=distances_weights)
     best_acc_per_experiment.append(max(experiment_history["balanced_accuracy"]))
     print("Episodic training completed.")
     with open(f'{train_history_path}/exp_{i}.json', 'w') as f:

@@ -11,6 +11,16 @@ from sklearn.metrics import  precision_score, recall_score, f1_score
 
 from config import *
 
+def z_score_normalize_with_clipping(embeddings, clip_range=3.0):
+    mean = embeddings.mean(dim=0, keepdim=True)
+    std = embeddings.std(dim=0, keepdim=True)
+    std = torch.clamp(std, min=1e-8)  # Avoid division by zero
+    
+    z_scores = (embeddings - mean) / std
+    clipped_z_scores = torch.clamp(z_scores, min=-clip_range, max=clip_range)
+    
+    return clipped_z_scores
+
 def create_episodes(X, y, n_episodes, n_support, n_query):
     episodes = []
     class_indices = {label: [] for label in range(y.shape[1])}
@@ -62,13 +72,11 @@ def cosine_similarity(x1, x2):
     x2_norm = F.normalize(x2, p=2, dim=1)
     return torch.mm(x1_norm, x2_norm.transpose(0, 1))
 
-def hybrid_prototype_loss(query_embeddings, prototypes, query_labels, alpha=1):
-    euclidean_distances = torch.cdist(query_embeddings, prototypes)
-    cosine_distances = 1 - cosine_similarity(query_embeddings, prototypes)
-    combined_distances = (alpha * euclidean_distances) + ((1 - alpha) * cosine_distances)
-    predictions = torch.sigmoid(-combined_distances)
-    criterion = nn.BCELoss()
-    return criterion(predictions, query_labels)
+def chebyshev_distance(x1, x2):
+    diff = x1.unsqueeze(1) - x2.unsqueeze(0)
+    abs_diff = torch.abs(diff)
+    distances = torch.max(abs_diff, dim=-1).values
+    return distances
 
 def normalize_distances(distances):
     min_val = distances.min()
@@ -78,12 +86,29 @@ def normalize_distances(distances):
     else:
         return torch.zeros_like(distances)
 
-def improved_hybrid_prototype_loss(query_embeddings, prototypes, query_labels, weights):
+def calculate_distances(query_embeddings, prototypes, weights):
+
     euclidean_distances = torch.cdist(query_embeddings, prototypes)
     cosine_distances = 1 - cosine_similarity(query_embeddings, prototypes)
-    normalized_euclidean_distances = normalize_distances(euclidean_distances)
-    normalized_cosine_distances = normalize_distances(cosine_distances)
-    combined_distances = (weights['euclidean'] * normalized_euclidean_distances) + (weights['cosine'] * normalized_cosine_distances)
+    chebyshev_distances = chebyshev_distance(query_embeddings, prototypes)
+    normalized_euclidean_distances = z_score_normalize_with_clipping(euclidean_distances)
+    normalized_cosine_distances = z_score_normalize_with_clipping(cosine_distances)
+    normalized_chebyshev_distances = z_score_normalize_with_clipping(chebyshev_distances)
+    combined_distances = (weights['euclidean'] * normalized_euclidean_distances) + (weights['cosine'] * normalized_cosine_distances) + (weights['chebyshev'] * normalized_chebyshev_distances)
+    return combined_distances
+
+def hybrid_prototype_loss(query_embeddings, prototypes, query_labels, alpha=1):
+    euclidean_distances = torch.cdist(query_embeddings, prototypes)
+    cosine_distances = 1 - cosine_similarity(query_embeddings, prototypes)
+    combined_distances = (alpha * euclidean_distances) + ((1 - alpha) * cosine_distances)
+    predictions = torch.sigmoid(-combined_distances)
+    criterion = nn.BCELoss()
+    return criterion(predictions, query_labels)
+
+
+
+def improved_hybrid_prototype_loss(query_embeddings, prototypes, query_labels, weights):
+    combined_distances = calculate_distances(query_embeddings, prototypes, weights)
     predictions = torch.sigmoid(-combined_distances)
     criterion = nn.BCELoss()
     return criterion(predictions, query_labels)
@@ -199,9 +224,7 @@ def new_validate_with_prototypes(model, dataloader, weights, alpha=1):
             embeddings = model(inputs, return_embedding=True)
             prototypes = compute_prototypes(embeddings, targets)
 
-            distances_prot = torch.cdist(embeddings, prototypes)
-            cosine_distances = 1 - cosine_similarity(embeddings, prototypes)
-            combined_distances = (weights['euclidean'] * distances_prot) + (weights['cosine'] * cosine_distances)
+            combined_distances = calculate_distances(embeddings, prototypes, weights)
             predictions = torch.sigmoid(-combined_distances)
 
             loss = improved_hybrid_prototype_loss(embeddings, prototypes, targets, weights)
@@ -218,10 +241,10 @@ def new_validate_with_prototypes(model, dataloader, weights, alpha=1):
     binary_predictions = torch.zeros_like(all_predictions)
     binary_predictions.scatter_(1, max_indices, 1)
 
-    # Print some predictions and corresponding actual values for comparison
-    print("Sample Predictions vs Actual Values (Validation Set):")
-    for i in range(5):  # Print first 5 examples
-        print(f"Predictions: {binary_predictions[i].cpu().numpy()}, Actual: {all_labels[i].cpu().numpy()}")
+    # # Print some predictions and corresponding actual values for comparison
+    # print("Sample Predictions vs Actual Values (Validation Set):")
+    # for i in range(5):  # Print first 5 examples
+    #     print(f"Predictions: {binary_predictions[i].cpu().numpy()}, Actual: {all_labels[i].cpu().numpy()}")
 
     # Calculate metrics
     f1 = f1_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
@@ -282,4 +305,63 @@ def new_episodic_training(model, optimizer, epochs, episodes, val_dataloader, we
         history["val_classes_acc"].append(classes_acc)
 
     save_best_model_cb.load_best_model(model=model)
+    return history
+
+def new_episodic_training_with_polyak(model, optimizer, epochs, episodes, val_dataloader, weights, polyak_decay=0.999):
+    history = {
+        "epochs": [], "loss": [], "val_loss": [], "balanced_accuracy": [],
+        "val_f1": [], "val_precision": [], "val_recall": [], 'val_classes_acc': []
+    }
+    save_best_model_cb = SaveBestModelCallback(save_path=best_model_path, target='val_f1', mode='max')
+    
+    # Initialize the EMA model
+    ema_model = type(model)(model.input_layer.in_features, model.output_layer.out_features)
+    ema_model.load_state_dict(model.state_dict())
+    
+    for epoch in range(epochs):
+        total_loss = 0
+        for episode_index, episode in enumerate(episodes):
+            model.train()
+            ema_model.eval()
+
+            support_set, query_set = episode
+            support_embeddings = model(support_set[0], return_embedding=True)
+            query_embeddings = model(query_set[0], return_embedding=True)
+
+            prototypes = compute_prototypes(support_embeddings, support_set[1])
+
+            loss = improved_hybrid_prototype_loss(query_embeddings, prototypes, query_set[1], weights)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+
+            # Update the EMA model
+            with torch.no_grad():
+                for ema_param, param in zip(ema_model.parameters(), model.parameters()):
+                    ema_param.data.mul_(polyak_decay).add_(param.data, alpha=1 - polyak_decay)
+
+        avg_train_loss = total_loss / len(episodes)
+        
+        # Use the EMA model for validation
+        balanced_acc, val_loss, val_f1, val_precision, val_recall, val_predictions, classes_acc = new_validate_with_prototypes(ema_model, val_dataloader, weights)
+        save_best_model_cb(ema_model, balanced_acc, epoch)
+        
+        print(f"Epoch {epoch}")
+        print(f"Training Loss: {avg_train_loss:.4f}")
+        print(f"Val Loss: {val_loss:.4f}, Balanced Accuracy: {balanced_acc:.4f}")
+        # print(f"Val F1: {val_f1:.4f}, Val Precision: {val_precision:.4f}, Val Recall: {val_recall:.4f}")
+        
+        history["epochs"].append(epoch)
+        history["loss"].append(avg_train_loss)
+        history["val_loss"].append(val_loss)
+        history["balanced_accuracy"].append(balanced_acc)
+        history["val_f1"].append(val_f1)
+        history["val_precision"].append(val_precision)
+        history["val_recall"].append(val_recall)
+        history["val_classes_acc"].append(classes_acc)
+
+    save_best_model_cb.load_best_model(model=ema_model)
     return history
