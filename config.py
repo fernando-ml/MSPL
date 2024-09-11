@@ -24,7 +24,7 @@ else:
     'cosine': 0
     }
 train_history_path = "train_history/"+model_type
-best_model_path = "best_model.pth"
+best_model_path = "models/saved_models/best_model.pth"
 
 target_column = "label"
 # binary_class = True

@@ -66,7 +66,7 @@ val_dataloader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=Fals
 
 best_acc_per_experiment = []
 for i in range(n_experiments):
-    print(f"\n###############################\nStarting experiment {i+1}/{n_experiments}")
+    print(f"\n###############################\nStarting experiment {i+1}/{n_experiments}\n###############################\n")
     X_train_sampled, y_train_sampled = stratified_sample(datasets=[X_train, y_train], n_samples=n_samples, sample_per_class=sample_per_class)
 
     selected_model = MLP_MultiLabel(n_features=len(features_RFC), n_classes=y_train_data.shape[1])
@@ -87,5 +87,5 @@ for i in range(n_experiments):
     with open(f'{train_history_path}/exp_{i}.json', 'w') as f:
         json.dump(experiment_history, f, indent=4)
 
-with open(f'experiments_{model_type}_accuracy.json', 'w') as f:
+with open(f'results/experiments_{model_type}_accuracy.json', 'w') as f:
     json.dump(best_acc_per_experiment, f, indent=4)
