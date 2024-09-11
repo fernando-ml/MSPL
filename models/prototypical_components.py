@@ -241,17 +241,11 @@ def new_validate_with_prototypes(model, dataloader, weights, alpha=1):
     binary_predictions = torch.zeros_like(all_predictions)
     binary_predictions.scatter_(1, max_indices, 1)
 
-    # # Print some predictions and corresponding actual values for comparison
-    # print("Sample Predictions vs Actual Values (Validation Set):")
-    # for i in range(5):  # Print first 5 examples
-    #     print(f"Predictions: {binary_predictions[i].cpu().numpy()}, Actual: {all_labels[i].cpu().numpy()}")
-
     # Calculate metrics
     f1 = f1_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
     precision = precision_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
     recall = recall_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
     
-    # Calculate balanced accuracy using our custom function
     balanced_acc, classes_acc = multi_label_balanced_accuracy(all_labels.cpu().numpy(), binary_predictions.cpu().numpy())
 
     # Calculate average loss
@@ -314,7 +308,7 @@ def new_episodic_training_with_polyak(model, optimizer, epochs, episodes, val_da
     }
     save_best_model_cb = SaveBestModelCallback(save_path=best_model_path, target='val_f1', mode='max')
     
-    # Initialize the EMA model
+    # Initialize the EMA model (Polyak Averaging)
     ema_model = type(model)(model.input_layer.in_features, model.output_layer.out_features)
     ema_model.load_state_dict(model.state_dict())
     

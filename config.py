@@ -6,7 +6,7 @@ saved_models_path = "models/saved_models"
 
 columns_to_drop = ["flag_urg", "fwd_flag_urg", "bwd_flag_urg", "flow_id", "timestamp", "src_addr", "dst_addr"]
 
-dual_space = False
+dual_space = True
 if dual_space:
     model_type = "dual_space_prototypical"
     alpha = 0.5
@@ -36,7 +36,7 @@ learning_rate = 0.004
 n_episodes = 200
 n_support = 40
 n_query = 20
-n_experiments = 10
+n_experiments = 30
 
 n_samples = 100#100_000
 sample_per_class = 1
