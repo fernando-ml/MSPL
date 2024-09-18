@@ -11,9 +11,11 @@ if dual_space:
     model_type = "dual_space_prototypical"
     alpha = 0.5
     distances_weights = {
-    'euclidean': 1/3,
-    'chebyshev': 1/3,
-    'cosine': 1/3
+    'euclidean': 1/5,
+    'chebyshev': 1/5,
+    'cosine': 1/5,
+    'wasserstein': 1/5,
+    'mahalanobis': 1/5
     }
 else:
     model_type = "regular_prototypical"
@@ -36,7 +38,7 @@ learning_rate = 0.004
 n_episodes = 200
 n_support = 40
 n_query = 20
-n_experiments = 30
+n_experiments = 40
 
 n_samples = 100#100_000
-sample_per_class = 1
+sample_per_class = 2

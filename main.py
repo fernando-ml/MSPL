@@ -73,7 +73,7 @@ for i in range(n_experiments):
 
     optimizer = torch.optim.Adam(selected_model.parameters(), lr=learning_rate)
 
-    criterion = nn.BCELoss()
+    # criterion = nn.BCELoss()
 
     episodes, unique_indices = create_episodes(X_train_sampled, y_train_sampled, n_episodes, n_support, n_query)
     print(f"Total unique inputs used for training: {len(unique_indices)}")

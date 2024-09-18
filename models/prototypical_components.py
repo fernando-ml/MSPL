@@ -78,6 +78,34 @@ def chebyshev_distance(x1, x2):
     distances = torch.max(abs_diff, dim=-1).values
     return distances
 
+def wasserstein_distance_torch(x1, x2):
+    x1_sorted, _ = torch.sort(x1, dim=-1)
+    x2_sorted, _ = torch.sort(x2, dim=-1)
+    return torch.mean(torch.abs(x1_sorted - x2_sorted), dim=-1)
+
+def mahalanobis_distance(x1, x2, eps=1e-7):
+    x = torch.cat([x1, x2])
+    cov = torch.cov(x.T)
+    
+    # Add a small value to the diagonal of the covariance matrix for numerical stability
+    cov.diagonal().add_(eps)
+    
+    try:
+        # Try to use pseudo-inverse
+        cov_inv = torch.linalg.pinv(cov)
+    except torch._C._LinAlgError:
+        # If pseudo-inverse fails, use a regularized version
+        identity = torch.eye(cov.shape[0], device=cov.device)
+        cov_inv = torch.linalg.inv(cov + eps * identity)
+    
+    diff = x1.unsqueeze(1) - x2.unsqueeze(0)
+    distances = torch.sqrt(torch.clamp(torch.einsum('...i,...i->...', diff, torch.einsum('...ij,...j->...i', cov_inv, diff)), min=0))
+    
+    # Replace any NaN or infinite values with the maximum finite value
+    distances = torch.nan_to_num(distances, nan=torch.finfo(distances.dtype).max, posinf=torch.finfo(distances.dtype).max)
+    
+    return distances
+
 def normalize_distances(distances):
     min_val = distances.min()
     max_val = distances.max()
@@ -91,10 +119,15 @@ def calculate_distances(query_embeddings, prototypes, weights):
     euclidean_distances = torch.cdist(query_embeddings, prototypes)
     cosine_distances = 1 - cosine_similarity(query_embeddings, prototypes)
     chebyshev_distances = chebyshev_distance(query_embeddings, prototypes)
+    wasserstein_distances = wasserstein_distance_torch(query_embeddings.unsqueeze(1), prototypes.unsqueeze(0))
+    mahalanobis_distances = mahalanobis_distance(query_embeddings, prototypes)
     normalized_euclidean_distances = z_score_normalize_with_clipping(euclidean_distances)
     normalized_cosine_distances = z_score_normalize_with_clipping(cosine_distances)
     normalized_chebyshev_distances = z_score_normalize_with_clipping(chebyshev_distances)
-    combined_distances = (weights['euclidean'] * normalized_euclidean_distances) + (weights['cosine'] * normalized_cosine_distances) + (weights['chebyshev'] * normalized_chebyshev_distances)
+    normalized_wasserstein_distances = z_score_normalize_with_clipping(wasserstein_distances)
+    normalized_mahalanobis_distances = z_score_normalize_with_clipping(mahalanobis_distances)
+
+    combined_distances = (weights['euclidean'] * normalized_euclidean_distances) + (weights['cosine'] * normalized_cosine_distances) + (weights['chebyshev'] * normalized_chebyshev_distances) + (weights['wasserstein'] * normalized_wasserstein_distances) + (weights['mahalanobis'] * normalized_mahalanobis_distances)
     return combined_distances
 
 def hybrid_prototype_loss(query_embeddings, prototypes, query_labels, alpha=1):
