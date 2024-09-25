@@ -177,9 +177,9 @@ def validate_with_prototypes(model, dataloader, alpha=1):
     binary_predictions.scatter_(1, max_indices, 1)
 
     # Print some predictions and corresponding actual values for comparison
-    print("Sample Predictions vs Actual Values (Validation Set):")
-    for i in range(5):  # Print first 5 examples
-        print(f"Predictions: {binary_predictions[i].cpu().numpy()}, Actual: {all_labels[i].cpu().numpy()}")
+    # print("Sample Predictions vs Actual Values (Validation Set):")
+    # for i in range(5):  # Print first 5 examples
+    #     print(f"Predictions: {binary_predictions[i].cpu().numpy()}, Actual: {all_labels[i].cpu().numpy()}")
 
     # Calculate metrics
     f1 = f1_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
@@ -228,7 +228,7 @@ def episodic_training(model, optimizer, epochs, episodes, val_dataloader, alpha=
         print(f"Epoch {epoch}")
         print(f"Training Loss: {avg_train_loss:.4f}")
         print(f"Val Loss: {val_loss:.4f}, Balanced Accuracy: {balanced_acc:.4f}")
-        print(f"Val F1: {val_f1:.4f}, Val Precision: {val_precision:.4f}, Val Recall: {val_recall:.4f}")
+        # print(f"Val F1: {val_f1:.4f}, Val Precision: {val_precision:.4f}, Val Recall: {val_recall:.4f}")
         
         # Debugging information
         # print(f"Val predictions mean per class: {val_predictions.mean(dim=0)}")

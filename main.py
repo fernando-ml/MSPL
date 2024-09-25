@@ -13,33 +13,50 @@ from config import *
 
 device = device()
 
-# Read parquet data
-train_data, validation_data, _ = pd.read_parquet(train_data_path), pd.read_parquet(val_data_path), pd.read_parquet(test_data_path)
+# Read data
+if dataset == "CIC":
+    train_data, validation_data, _ = pd.read_parquet(train_data_path), pd.read_parquet(val_data_path), pd.read_parquet(test_data_path)
+    target_column = target_column_CIC
+    try:
+        train_data.drop(columns_to_drop_CIC, axis=1, inplace=True)
+        validation_data.drop(columns_to_drop_CIC, axis=1, inplace=True)
+        # test_data.drop(columns_to_drop, axis=1, inplace=True)
+    except:
+        pass
+    # Convert labels to one-hot encoding for multi-label classification
+    y_train_data = pd.get_dummies(train_data[target_column])
+    y_validation_data = pd.get_dummies(validation_data[target_column])
+    # y_test_data = pd.get_dummies(test_data[target_column])
 
-try:
-    train_data.drop(columns_to_drop, axis=1, inplace=True)
-    validation_data.drop(columns_to_drop, axis=1, inplace=True)
-    # test_data.drop(columns_to_drop, axis=1, inplace=True)
-except:
-    pass
+    X_train_data, y_train_data = train_data.drop(target_column, axis=1), y_train_data
+    X_validation_data, y_validation_data = validation_data.drop(target_column, axis=1), y_validation_data
+    # X_test_data, y_test_data = test_data.drop(target_column, axis=1), y_test_data
 
-# Convert labels to one-hot encoding for multi-label classification
-y_train_data = pd.get_dummies(train_data[target_column])
-y_validation_data = pd.get_dummies(validation_data[target_column])
-# y_test_data = pd.get_dummies(test_data[target_column])
+    RFC_pipeline = Pipeline([("Scaler", sklearn.preprocessing.RobustScaler()), ("RFC", RandomForestClassifier())])
+    RFC_pipeline.fit(X_train_data, y_train_data)
+    ftr_importance_RFC = pd.DataFrame(zip(X_train_data.columns, RFC_pipeline["RFC"].feature_importances_))
+    ftr_importance_RFC.columns = ["Column", "Weight"]
+    ftr_importance_RFC.sort_values("Weight", ascending=False, inplace=True)
+    selected_features = ftr_importance_RFC[ftr_importance_RFC.Weight >= ftr_importance_RFC.Weight.mean()].Column.values
 
-X_train_data, y_train_data = train_data.drop(target_column, axis=1), y_train_data
-X_validation_data, y_validation_data = validation_data.drop(target_column, axis=1), y_validation_data
-# X_test_data, y_test_data = test_data.drop(target_column, axis=1), y_test_data
+    print(f"# RFC Features: {len(selected_features)}")
 
-RFC_pipeline = Pipeline([("Scaler", sklearn.preprocessing.RobustScaler()), ("RFC", RandomForestClassifier())])
-RFC_pipeline.fit(X_train_data, y_train_data)
-ftr_importance_RFC = pd.DataFrame(zip(X_train_data.columns, RFC_pipeline["RFC"].feature_importances_))
-ftr_importance_RFC.columns = ["Column", "Weight"]
-ftr_importance_RFC.sort_values("Weight", ascending=False, inplace=True)
-features_RFC = ftr_importance_RFC[ftr_importance_RFC.Weight >= ftr_importance_RFC.Weight.mean()].Column.values
+elif dataset == "EV":
+    from sklearn.model_selection import train_test_split
 
-print(f"# RFC Features: {len(features_RFC)}")
+    EV_data = pd.read_csv(data_power_consumption)
+    EV_data.drop(columns_to_drop_power_consumption, axis=1, inplace=True)
+    state_columns = pd.get_dummies(EV_data['State'], prefix='State')
+    EV_data = pd.concat([EV_data, state_columns], axis=1)
+    EV_data.drop('State', axis=1, inplace=True)
+    train_data, validation_data = train_test_split(EV_data, test_size=0.5)
+    X_train_data, y_train_data = train_data.drop(target_column_power_consumption, axis=1), train_data[target_column_power_consumption]
+    X_validation_data, y_validation_data = validation_data.drop(target_column_power_consumption, axis=1), validation_data[target_column_power_consumption]
+    
+    selected_features = X_train_data.columns
+
+    y_train_data = pd.get_dummies(y_train_data)
+    y_validation_data = pd.get_dummies(y_validation_data)
 # Test RFC
 # RFC_pipeline = Pipeline([("Scaler", sklearn.preprocessing.RobustScaler()), ("RFC", RandomForestClassifier(random_state=random_seed))])
 # RFC_pipeline.fit(X_train_data[features_RFC], y_train_data)
@@ -50,11 +67,12 @@ print(f"# RFC Features: {len(features_RFC)}")
 
 scaler = sklearn.preprocessing.RobustScaler()
 
-X_train_data_scaled = scaler.fit_transform(X_train_data[features_RFC].values)
-X_val_data_scaled = scaler.transform(X_validation_data[features_RFC].values)
+X_train_data_scaled = scaler.fit_transform(X_train_data[selected_features].values)
+X_val_data_scaled = scaler.transform(X_validation_data[selected_features].values)
 
 X_train = torch.tensor(X_train_data_scaled, dtype=torch.float32)
 y_train = torch.tensor(y_train_data.values, dtype=torch.float32)
+n_features = X_train_data_scaled.shape[1]
 
 train_dataset = TensorDataset(X_train, y_train)
 train_dataloader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
@@ -69,7 +87,7 @@ for i in range(n_experiments):
     print(f"\n###############################\nStarting experiment {i+1}/{n_experiments}\n###############################\n")
     X_train_sampled, y_train_sampled = stratified_sample(datasets=[X_train, y_train], n_samples=n_samples, sample_per_class=sample_per_class)
 
-    selected_model = MLP_MultiLabel(n_features=len(features_RFC), n_classes=y_train_data.shape[1])
+    selected_model = MLP_MultiLabel(n_features=n_features, n_classes=y_train_data.shape[1])
 
     optimizer = torch.optim.Adam(selected_model.parameters(), lr=learning_rate)
 
@@ -78,10 +96,10 @@ for i in range(n_experiments):
     episodes, unique_indices = create_episodes(X_train_sampled, y_train_sampled, n_episodes, n_support, n_query)
     print(f"Total unique inputs used for training: {len(unique_indices)}")
     
-    # experiment_history = episodic_training(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
-    #                                              epochs=n_epochs, alpha=alpha)
-    experiment_history = new_episodic_training_with_polyak(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
-                                           epochs=n_epochs, weights=distances_weights)
+    experiment_history = episodic_training(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
+                                                 epochs=n_epochs, alpha=alpha)
+    # experiment_history = new_episodic_training_with_polyak(model=selected_model, optimizer=optimizer, episodes=episodes, val_dataloader=val_dataloader, 
+    #                                        epochs=n_epochs, weights=distances_weights)
     best_acc_per_experiment.append(max(experiment_history["balanced_accuracy"]))
     print("Episodic training completed.")
     with open(f'{train_history_path}/exp_{i}.json', 'w') as f:

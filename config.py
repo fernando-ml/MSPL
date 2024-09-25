@@ -1,12 +1,23 @@
+# dataset = "CIC"
+dataset = "EV"
+
+# CIC dataset 
 train_data_path = "data/train_set.parquet"
 test_data_path = "data/test_set.parquet"
 val_data_path = "data/crossval_set.parquet"
 
+# EV dataset
+data_power_consumption = "data/EVs/Power Consumption/EVSE-B-PowerCombined.csv" # Power Consumption
+
 saved_models_path = "models/saved_models"
 
-columns_to_drop = ["flag_urg", "fwd_flag_urg", "bwd_flag_urg", "flow_id", "timestamp", "src_addr", "dst_addr"]
+target_column_CIC = "label"
+target_column_power_consumption = "Attack"
 
-dual_space = True
+columns_to_drop_CIC = ["flag_urg", "fwd_flag_urg", "bwd_flag_urg", "flow_id", "timestamp", "src_addr", "dst_addr"]
+columns_to_drop_power_consumption = ['time', 'Attack-Group', 'Label', 'interface']
+
+dual_space = False
 if dual_space:
     model_type = "dual_space_prototypical"
     alpha = 0.5
@@ -28,9 +39,8 @@ else:
 train_history_path = "train_history/"+model_type
 best_model_path = "models/saved_models/best_model.pth"
 
-target_column = "label"
 # binary_class = True
-positive_label = "benign"
+# positive_label = "benign"
 train_batch_size = 32
 val_batch_size = 512
 n_epochs = 10
@@ -40,5 +50,5 @@ n_support = 40
 n_query = 20
 n_experiments = 40
 
-n_samples = 100#100_000
+n_samples = 200#100_000
 sample_per_class = 2
