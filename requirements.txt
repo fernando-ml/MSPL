@@ -2,3 +2,5 @@ numpy
 pandas
 scikit-learn
 torch
+mlflow 
+psycopg2-binary

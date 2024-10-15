@@ -1,3 +1,6 @@
 train_history/
 bk/
 data/
+__pycache__
+mlruns
+.env

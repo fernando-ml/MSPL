@@ -1,40 +1,56 @@
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
+
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI")
+MLFLOW_EXPERIMENT_NAME = "DoS Project"
+
+
+# config.py
+
+
 # dataset = "CIC"
 dataset = "EV"
 
-# CIC dataset 
+# CIC dataset
 train_data_path = "data/train_set.parquet"
 test_data_path = "data/test_set.parquet"
 val_data_path = "data/crossval_set.parquet"
 
 # EV dataset
-data_power_consumption = "data/EVs/Power Consumption/EVSE-B-PowerCombined.csv" # Power Consumption
+# Power Consumption
+data_power_consumption = "data/EVs/Power Consumption/EVSE-B-PowerCombined.csv"
 
 saved_models_path = "models/saved_models"
 
 target_column_CIC = "label"
 target_column_power_consumption = "Attack"
 
-columns_to_drop_CIC = ["flag_urg", "fwd_flag_urg", "bwd_flag_urg", "flow_id", "timestamp", "src_addr", "dst_addr"]
-columns_to_drop_power_consumption = ['time', 'Attack-Group', 'Label', 'interface']
+columns_to_drop_CIC = ["flag_urg", "fwd_flag_urg",
+                       "bwd_flag_urg", "flow_id", "timestamp", "src_addr", "dst_addr"]
+columns_to_drop_power_consumption = [
+    'time', 'Attack-Group', 'Label', 'interface']
 
 dual_space = False
 if dual_space:
     model_type = "dual_space_prototypical"
     alpha = 0.5
     distances_weights = {
-    'euclidean': 1/5,
-    'chebyshev': 1/5,
-    'cosine': 1/5,
-    'wasserstein': 1/5,
-    'mahalanobis': 1/5
+        'euclidean': 1/5,
+        'chebyshev': 1/5,
+        'cosine': 1/5,
+        'wasserstein': 1/5,
+        'mahalanobis': 1/5
     }
 else:
     model_type = "regular_prototypical"
     alpha = 1
     distances_weights = {
-    'euclidean': 1,
-    'chebyshev': 0,
-    'cosine': 0
+        'euclidean': 1,
+        'chebyshev': 0,
+        'cosine': 0
     }
 train_history_path = "train_history/"+model_type
 best_model_path = "models/saved_models/best_model.pth"
@@ -50,5 +66,5 @@ n_support = 40
 n_query = 20
 n_experiments = 40
 
-n_samples = 200#100_000
+n_samples = 200  # 100_000
 sample_per_class = 2
