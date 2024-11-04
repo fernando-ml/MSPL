@@ -18,6 +18,10 @@ mlflow server --backend-store-uri postgresql://uri
 
 Place the raw datsets in the **data** folder. If the parquets don't exists yet, use the combine_data.py to create the parquets for CICIoV and CICEVSE2024. The processed parquets will be placed in `data\parquets`.
 
+## Utils
+
+See `utils\utils.py` for dataset loading and preprocesing functions.
+
 ## Experiments Definition
 
 possible config for experiment runs
