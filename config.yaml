@@ -1,0 +1,49 @@
+# Dataset configuration
+datasets:
+  - name: "CICEVSE2024 Dataset"
+    path: "data/parquets/cicevse_network.parquet"
+
+  - name: "CIC IoV dataset 2024"
+    path: "data/parquets/ciciov.parquet"
+
+  - name: "Train Dataset"
+    path: "data/parquets/crossval_set.parquet"
+
+  - name: "Val Dataset"
+    path: "data/parquets/train_set.parquet"
+
+# Training and experiment setup
+setup:
+  params:
+    train-batch-size: 1
+    val-batch-size: 1
+    epochs: 100
+    lr: 0.001
+    n_episodes: 100
+    n_support: 5
+    n_query: 15
+    n_experiments: 5
+    n_samples: 1000
+    sample_per_class: 20
+
+  scenario:
+    - name: "polyak"
+      weights: ["euclidean", "manhattan", "cosine", "chebyshev", "minkowski"]
+      vals: [1.0, 0.8, 0.6, 0.4, 0.2]
+    - name: "no-polyak"
+      weights: ["euclidean", "chebyshev", "cosine"]
+      vals: [1, 0, 0]
+
+# Output configuration
+output:
+  train: "outputs/training_results" # Directory for training outputs
+  best_models: "outputs/models" # Directory for saving best models
+# Additional configuration
+logging:
+  level: "INFO"
+  save_frequency: 10 # Save checkpoints every N epochs
+
+# Hardware configuration
+hardware:
+  gpu_id: 0
+  num_workers: 4 # Number of data loading workers

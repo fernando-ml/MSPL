@@ -1,6 +1,57 @@
 train_history/
 bk/
-data/
+data/raw/*
+data/parquets/*
 __pycache__
 mlruns
 .env
+
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Jupyter Server
+.jupyter/
+.jupyter-server-log.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Data files (optional - uncomment if needed)
+# *.csv
+# *.dat
+# *.pkl
+# *.npy
+# *.h5
+
+# OS specific
+.DS_Store
+Thumbs.db

@@ -1,8 +1,8 @@
 # TODO
 
-- [ ] wrap dataset loading in a function... handle different sizes, formats, cols to drop, etc....
+- [x] wrap dataset loading in a function... handle different sizes, formats, cols to drop, etc....
 
-- [ ] wrap preprocessing in a function
+- [x] wrap preprocessing in a function
 
 - [ ] add ML flow logging .... for each epoch in experiments log to ML flow, also log to ML flow at the end of each experiment
 
@@ -13,6 +13,10 @@ to start the server using postgres as backend
 ```bash
 mlflow server --backend-store-uri postgresql://uri
 ```
+
+## Data
+
+Place the raw datsets in the **data** folder. If the parquets don't exists yet, use the combine_data.py to create the parquets for CICIoV and CICEVSE2024. The processed parquets will be placed in `data\parquets`.
 
 ## Experiments Definition
 
