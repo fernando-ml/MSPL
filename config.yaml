@@ -1,17 +1,6 @@
-# Dataset configuration
-datasets:
-  - name: "CICEVSE2024 Dataset"
-    path: "data/parquets/cicevse_network.parquet"
-
-  - name: "CIC IoV dataset 2024"
-    path: "data/parquets/ciciov.parquet"
-
-  - name: "Train Dataset"
-    path: "data/parquets/crossval_set.parquet"
-
-  - name: "Val Dataset"
-    path: "data/parquets/train_set.parquet"
-
+# Dataset selection
+selected-dataset: "CICEVSE2024 Dataset" # "CIC IoV dataset 2024" "CIC IDS 2017"
+  
 # Training and experiment setup
 setup:
   params:

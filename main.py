@@ -4,18 +4,20 @@ import sklearn
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
 import torch
-from torch import nn
 from torch.utils.data import TensorDataset, DataLoader
 from utils.utils import *
 from models.model_components import *
 from models.prototypical_components import *
 from config import *
+import yaml
 
 device = device()
 
 # TODO: wrap dataset loading in a function... handle different sizes, formats, cols to  drop, etc....
 
 # TODO: wrap preprocessing in a function
+
+config = yaml.safe_load(open("config.yaml"))
 
 
 # Read data
@@ -32,7 +34,6 @@ if dataset == "CIC":
     # Convert labels to one-hot encoding for multi-label classification
     y_train_data = pd.get_dummies(train_data[target_column])
     y_validation_data = pd.get_dummies(validation_data[target_column])
-    # y_test_data = pd.get_dummies(test_data[target_column])
 
     X_train_data, y_train_data = train_data.drop(
         target_column, axis=1), y_train_data
@@ -70,13 +71,6 @@ elif dataset == "EV":
 
     y_train_data = pd.get_dummies(y_train_data)
     y_validation_data = pd.get_dummies(y_validation_data)
-# Test RFC
-# RFC_pipeline = Pipeline([("Scaler", sklearn.preprocessing.RobustScaler()), ("RFC", RandomForestClassifier(random_state=random_seed))])
-# RFC_pipeline.fit(X_train_data[features_RFC], y_train_data)
-
-# y_test_pred = RFC_pipeline.predict(X_test_data[features_RFC])
-# print(classification_report(y_test_data, y_test_pred))
-# print(f"Accuracy: {multi_label_balanced_accuracy(y_test_data, y_test_pred)}")
 
 scaler = sklearn.preprocessing.RobustScaler()
 

@@ -26,3 +26,5 @@ def read_csv_files_in_folder(folder_path):
     combined_df = pd.concat(dfs, ignore_index=True)
 
     return combined_df
+
+
