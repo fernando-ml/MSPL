@@ -13,7 +13,11 @@
 
 import yaml
 import pandas as pd
+import sklearn
 from sklearn.model_selection import train_test_split
+import torch
+from torch.utils.data import TensorDataset, DataLoader
+
 
 # device = device()
 
@@ -22,43 +26,98 @@ config = yaml.safe_load(open("config.yaml"))
 class DatasetManager:
     def __init__(self, config):
         self.selected_dataset = config['selected-dataset']
+        self.val_batch_size = config['setup']['params']['val-batch-size']
         self.loaded_dataset = None
         self.target_column = None
+
+        self.get_data()
+        
 
     def get_data(self):
         self.datasets = yaml.safe_load(open("utils/datasets_config.yaml"))
         # print(self.datasets)
         for dataset in self.datasets:
             if dataset['name'] == self.selected_dataset:
-                if len(dataset.keys()) > 2:
+                if len(dataset.keys()) > 4:
+                    print(dataset.keys())
                     self.loaded_dataset = pd.read_parquet(dataset['path_train']), pd.read_parquet(dataset['path_val'])
-                    self.target_column = dataset['target_column']
+                    break
                 else:
                     self.loaded_dataset = pd.read_parquet(dataset['path'])
-                    self.target_column = dataset['target_column']
-            print("Loaded dataset:", self.selected_dataset)
+                    break
+        self.target_column = dataset['target_column']
+        self.columns_to_drop = dataset['columns-to-drop']
 
-    def _preprocess_data(self):
-        if len(self.loaded_dataset) > 2:
+    def preprocess_data(self):
+        # Split dataset into train and validation sets if not already split
+        if isinstance(self.loaded_dataset, tuple):
             train_data, validation_data = self.loaded_dataset[0], self.loaded_dataset[1]
         else:
             train_data, validation_data = train_test_split(self.loaded_dataset, test_size=0.5)
-        try:
-            # columns to drop
-            
 
-            y_train_data = pd.get_dummies(train_data[self.target_column])
-            y_validation_data = pd.get_dummies(validation_data[self.target_column])
+        # Drop unnecessary columns
+        train_data.drop(self.columns_to_drop, axis=1, inplace=True)
+        validation_data.drop(self.columns_to_drop, axis=1, inplace=True)
 
-            X_train_data, y_train_data = train_data.drop(
-                self.target_column, axis=1), y_train_data
-            X_validation_data, y_validation_data = validation_data.drop(
-                self.target_column, axis=1), y_validation_data
-        except:
-            pass
+        # Separate target column (y)
+        y_train_data = pd.get_dummies(train_data[self.target_column])
+        y_validation_data = pd.get_dummies(validation_data[self.target_column])
 
+        # Drop target column from feature sets (X)
+        X_train_data = train_data.drop(self.target_column, axis=1)
+        X_validation_data = validation_data.drop(self.target_column, axis=1)
+
+        # Select text columns
+        text_cols = X_train_data.select_dtypes(include='object').columns
+
+        # Combine train and validation data to ensure consistent dummy variable creation
+        combined_X = pd.concat([X_train_data[text_cols], X_validation_data[text_cols]])
+
+        # Create dummy variables for text columns across both train and validation sets
+        combined_X_dummies = pd.get_dummies(combined_X, prefix='text', drop_first=True)
+
+        # Split back into train and validation sets
+        X_train_text_cols = combined_X_dummies.iloc[:X_train_data.shape[0], :]
+        X_validation_text_cols = combined_X_dummies.iloc[X_train_data.shape[0]:, :]
+
+        # Drop original text columns from X_train and X_validation
+        X_train_data.drop(text_cols, axis=1, inplace=True)
+        X_validation_data.drop(text_cols, axis=1, inplace=True)
+
+        # Concatenate the dummy variables back to the original feature sets
+        X_train_data = pd.concat([X_train_data, X_train_text_cols], axis=1)
+        X_validation_data = pd.concat([X_validation_data, X_validation_text_cols], axis=1)
+
+        # Apply RobustScaler to scale numerical features
+        scaler = sklearn.preprocessing.RobustScaler()
+
+        X_train_data_scaled = scaler.fit_transform(X_train_data.values)
+        X_val_data_scaled = scaler.transform(X_validation_data.values)
+
+        # Convert scaled data to PyTorch tensors
+        X_train = torch.tensor(X_train_data_scaled, dtype=torch.float32)
+        y_train = torch.tensor(y_train_data.values, dtype=torch.float32)
         
-DatasetManager(config).get_data()
+        self.n_features = X_train.shape[1]  # Set number of features based on scaled data
+
+        X_val = torch.tensor(X_val_data_scaled, dtype=torch.float32)
+        y_val = torch.tensor(y_validation_data.values, dtype=torch.float32)
+
+        # Create a DataLoader for the validation set
+        val_dataset = TensorDataset(X_val, y_val)
+        val_dataloader = DataLoader(val_dataset,
+                                    batch_size=self.val_batch_size,
+                                    shuffle=False)
+
+        return X_train, y_train, val_dataloader
+        
+
+dm = DatasetManager(config)
+X_train, y_train, val_dataloader = dm.preprocess_data()
+print(X_train.shape, y_train.shape)
+print(type(val_dataloader))
+        
+# DatasetManager(config).get_data()
 
 # for dataset in config['datasets']:
 #     print(dataset['name'], dataset['path'])

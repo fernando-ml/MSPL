@@ -1,11 +1,11 @@
 # Dataset selection
-selected-dataset: "CICEVSE2024 Dataset" # "CIC IoV dataset 2024" "CIC IDS 2017"
-  
+selected-dataset: 'CICIDS2017' #"CICEVSE_Network2024" # CICEVSE_PowerB2024 # "CICIoV2024" "CICIDS2017"
+scenario: 'polyak'  # 'no-polyak'
 # Training and experiment setup
 setup:
   params:
     train-batch-size: 1
-    val-batch-size: 1
+    val-batch-size: 512
     epochs: 100
     lr: 0.001
     n_episodes: 100

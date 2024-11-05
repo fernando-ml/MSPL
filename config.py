@@ -33,7 +33,7 @@ columns_to_drop_CIC = ["flag_urg", "fwd_flag_urg",
 columns_to_drop_power_consumption = [
     'time', 'Attack-Group', 'Label', 'interface']
 
-dual_space = False
+dual_space = True
 if dual_space:
     model_type = "dual_space_prototypical"
     alpha = 0.5
