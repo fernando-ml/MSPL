@@ -53,5 +53,6 @@ ENV/
 # *.h5
 
 # OS specific
-.DS_Store
+*.DS_Store
 Thumbs.db
+.DS_Store
