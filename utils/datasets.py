@@ -29,7 +29,6 @@ class DatasetManager:
         for dataset in self.datasets:
             if dataset['name'] == self.selected_dataset:
                 if len(dataset.keys()) > 4:
-                    print(dataset.keys())
                     self.loaded_dataset = pd.read_parquet(dataset['path_train']), pd.read_parquet(dataset['path_val'])
                     break
                 else:

@@ -143,6 +143,7 @@ def hybrid_prototype_loss(query_embeddings, prototypes, query_labels, alpha=1):
 def improved_hybrid_prototype_loss(query_embeddings, prototypes, query_labels, weights):
     combined_distances = calculate_distances(query_embeddings, prototypes, weights)
     predictions = torch.sigmoid(-combined_distances)
+    print(f"Predictions min: {predictions.min().item()}, max: {predictions.max().item()}")
     criterion = nn.BCELoss()
     return criterion(predictions, query_labels)
 
