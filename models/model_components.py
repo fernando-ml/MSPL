@@ -48,7 +48,10 @@ class SaveBestModelCallback:
         print(f"Loaded best model weights from {self.save_path} from epoch {self.best_epoch}.")
 
 class Attention(nn.Module):
-    def __init__(self, feature_dim):
+    '''
+    Apply soft-attention by projecting embeddings through softmax(tanh(dim_projections))
+    '''
+    def __init__(self, feature_dim, step_dim):
         super().__init__()
         self.feature_dim = feature_dim
         self.proj = nn.Linear(feature_dim, 1, bias=False)
@@ -56,32 +59,33 @@ class Attention(nn.Module):
     def forward(self, x):
         projection = self.proj(x)
         projection = torch.tanh(projection)
-        att = torch.exp(projection)
-        att = att / (torch.sum(att, dim=1, keepdim=True) + 1e-10)
+        att = torch.exp(projection) # softmax pt.1
+        att = att / (torch.sum(att, dim=1, keepdim=True) + 1e-10) # softmax pt.2
         weighted_input = x * att
         return weighted_input, att
 
-class MLP_MultiLabel(nn.Module):
-    def __init__(self, n_features, n_classes):
-        super(MLP_MultiLabel, self).__init__()
-        self.input_layer = nn.Linear(n_features, 32)
-        self.hidden_layer = nn.Linear(32, 16)
-        self.output_layer = nn.Linear(16, n_classes)
+# class MLP_MultiLabel(nn.Module):
+#     def __init__(self, n_features, n_classes):
+#         super(MLP_MultiLabel, self).__init__()
+#         self.input_layer = nn.Linear(n_features, 32)
+#         self.hidden_layer = nn.Linear(32, 16)
+#         self.output_layer = nn.Linear(16, n_classes)
 
-    def forward(self, model_input, return_embedding=False):
-        x = F.relu(self.input_layer(model_input))
-        x = F.dropout(x)
-        embedding = F.relu(self.hidden_layer(x))
-        if return_embedding:
-            return embedding
+#     def forward(self, model_input, return_embedding=False):
+#         x = F.relu(self.input_layer(model_input))
+#         x = F.dropout(x)
+#         embedding = F.relu(self.hidden_layer(x))
+#         if return_embedding:
+#             return embedding
       
-        return x
+#         return x
 
 class MLP_MultiLabel(nn.Module):
     def __init__(self, n_features, n_classes):
         super(MLP_MultiLabel, self).__init__()
         self.input_layer = nn.Linear(n_features, 64)
         self.hidden_layer1 = nn.Linear(64, 32)
+        self.attention = Attention(32, n_features)
         self.hidden_layer2 = nn.Linear(32, 16)
         self.output_layer = nn.Linear(16, n_classes)
 
@@ -90,7 +94,8 @@ class MLP_MultiLabel(nn.Module):
         x = F.dropout(x, p=0.5)
         x = F.relu(self.hidden_layer1(x))
         x = F.dropout(x, p=0.5)
-        embedding = F.relu(self.hidden_layer2(x))
+        x, att_weights = self.attention(x)
+        embedding = F.relu(x)
         if return_embedding:
             return embedding
         x = self.output_layer(embedding)

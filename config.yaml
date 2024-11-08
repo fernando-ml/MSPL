@@ -1,27 +1,23 @@
 # Dataset selection
 selected-dataset: 'CICIDS2017' #"CICEVSE_Network2024" # CICEVSE_PowerB2024 # "CICIoV2024" "CICIDS2017"
-scenario: 'polyak'  # 'no-polyak'
+polyak: True
 # Training and experiment setup
 setup:
   params:
-    train-batch-size: 1
+    train-batch-size: 32
     val-batch-size: 512
-    epochs: 100
-    lr: 0.001
-    n_episodes: 100
-    n_support: 5
-    n_query: 15
-    n_experiments: 5
-    n_samples: 1000
-    sample_per_class: 20
+    epochs: 10
+    lr: 0.004
+    n_episodes: 200
+    n_support: 40
+    n_query: 20
+    n_experiments: 30
+    n_samples: 200
+    sample_per_class: 2
 
-  scenario:
-    - name: "polyak"
-      weights: ["euclidean", "manhattan", "cosine", "chebyshev", "minkowski"]
-      vals: [1.0, 0.8, 0.6, 0.4, 0.2]
-    - name: "no-polyak"
-      weights: ["euclidean", "chebyshev", "cosine"]
-      vals: [1, 0, 0]
+  scenario_config:
+    weights: ["euclidean", "chebyshev", "cosine", "wasserstein"]
+    vals: ['1/3', '1/3', '1/3', '0.0']
 
 # Output configuration
 output:
@@ -32,7 +28,7 @@ logging:
   level: "INFO"
   save_frequency: 10 # Save checkpoints every N epochs
 
-# Hardware configuration
-hardware:
-  gpu_id: 0
-  num_workers: 4 # Number of data loading workers
+# # Hardware configuration
+# hardware:
+#   gpu_id: 0
+#   num_workers: 4 # Number of data loading workers

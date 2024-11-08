@@ -11,13 +11,13 @@ MLFLOW_EXPERIMENT_NAME = "DoS Project"
 # config.py
 
 
-# dataset = "CIC"
-dataset = "EV"
+dataset = "CIC"
+# dataset = "EV"
 
 # CIC dataset
-train_data_path = "data/train_set.parquet"
-test_data_path = "data/test_set.parquet"
-val_data_path = "data/crossval_set.parquet"
+train_data_path = "data/parquets/train_set.parquet"
+test_data_path = "data/parquets/test_set.parquet"
+val_data_path = "data/parquets/crossval_set.parquet"
 
 # EV dataset
 # Power Consumption
@@ -37,12 +37,13 @@ dual_space = True
 if dual_space:
     model_type = "dual_space_prototypical"
     alpha = 0.5
+    
     distances_weights = {
-        'euclidean': 1/5,
-        'chebyshev': 1/5,
-        'cosine': 1/5,
-        'wasserstein': 1/5,
-        'mahalanobis': 1/5
+        'euclidean': 1,
+        'chebyshev': 0,
+        'cosine': 0,
+        'wasserstein': 0,
+        'mahalanobis': 0
     }
 else:
     model_type = "regular_prototypical"
@@ -60,7 +61,7 @@ best_model_path = "models/saved_models/best_model.pth"
 train_batch_size = 32
 val_batch_size = 512
 n_epochs = 10
-learning_rate = 0.004
+learning_rate = 0.005
 n_episodes = 200
 n_support = 40
 n_query = 20

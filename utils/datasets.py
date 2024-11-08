@@ -9,9 +9,6 @@ from sklearn.model_selection import train_test_split
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 
-
-# device = device()
-
 config = yaml.safe_load(open("config.yaml"))
 
 class DatasetManager:
@@ -25,7 +22,6 @@ class DatasetManager:
 
     def get_data(self):
         self.datasets = yaml.safe_load(open("utils/datasets_config.yaml"))
-        # print(self.datasets)
         for dataset in self.datasets:
             if dataset['name'] == self.selected_dataset:
                 if len(dataset.keys()) > 4:
@@ -38,21 +34,20 @@ class DatasetManager:
         self.columns_to_drop = dataset['columns-to-drop']
 
     def preprocess_data(self):
-        # Split dataset into train and validation sets if not already split
         if isinstance(self.loaded_dataset, tuple):
             train_data, validation_data = self.loaded_dataset[0], self.loaded_dataset[1]
         else:
             train_data, validation_data = train_test_split(self.loaded_dataset, test_size=0.5)
 
-        # Drop unnecessary columns
+        # Drop unnecessary columns - specificied in datasets_config.yaml
         train_data.drop(self.columns_to_drop, axis=1, inplace=True)
         validation_data.drop(self.columns_to_drop, axis=1, inplace=True)
 
-        # Separate target column (y)
+        # Separate target column
         y_train_data = pd.get_dummies(train_data[self.target_column])
         y_validation_data = pd.get_dummies(validation_data[self.target_column])
 
-        # Drop target column from feature sets (X)
+        # Drop target column from feature sets
         X_train_data = train_data.drop(self.target_column, axis=1)
         X_validation_data = validation_data.drop(self.target_column, axis=1)
 
@@ -78,8 +73,7 @@ class DatasetManager:
             X_train_data = pd.concat([X_train_data, X_train_text_cols], axis=1)
             X_validation_data = pd.concat([X_validation_data, X_validation_text_cols], axis=1)
 
-        # Apply RobustScaler to scale numerical features
-        scaler = sklearn.preprocessing.RobustScaler()
+        scaler = sklearn.preprocessing.StandardScaler()
 
         X_train_data_scaled = scaler.fit_transform(X_train_data.values)
         X_val_data_scaled = scaler.transform(X_validation_data.values)
