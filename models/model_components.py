@@ -64,29 +64,13 @@ class Attention(nn.Module):
         weighted_input = x * att
         return weighted_input, att
 
-# class MLP_MultiLabel(nn.Module):
-#     def __init__(self, n_features, n_classes):
-#         super(MLP_MultiLabel, self).__init__()
-#         self.input_layer = nn.Linear(n_features, 32)
-#         self.hidden_layer = nn.Linear(32, 16)
-#         self.output_layer = nn.Linear(16, n_classes)
-
-#     def forward(self, model_input, return_embedding=False):
-#         x = F.relu(self.input_layer(model_input))
-#         x = F.dropout(x)
-#         embedding = F.relu(self.hidden_layer(x))
-#         if return_embedding:
-#             return embedding
-      
-#         return x
-
 class MLP_MultiLabel(nn.Module):
     def __init__(self, n_features, n_classes):
         super(MLP_MultiLabel, self).__init__()
         self.input_layer = nn.Linear(n_features, 64)
         self.hidden_layer1 = nn.Linear(64, 32)
         self.attention = Attention(32, n_features)
-        self.hidden_layer2 = nn.Linear(32, 16)
+        # self.hidden_layer2 = nn.Linear(32, 16)
         self.output_layer = nn.Linear(16, n_classes)
 
     def forward(self, model_input, return_embedding=False):
