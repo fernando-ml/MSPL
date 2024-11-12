@@ -1,9 +1,7 @@
 import os
+import numpy as np
 import pandas as pd
-
-
 import yaml
-import pandas as pd
 import sklearn
 from sklearn.model_selection import train_test_split
 import torch
@@ -96,6 +94,19 @@ class DatasetManager:
         return X_train, y_train, val_dataloader
     def get_n_features(self):
         return self.n_features
+    
+def dataloader_to_numpy(dataloader):
+    no_dl_data, no_dl_labels = [], []
+    for batch_data, batch_labels in dataloader:
+        no_dl_data.append(batch_data)
+        no_dl_labels.append(batch_labels)
+    all_data = torch.cat(no_dl_data, dim=0)
+    all_labels = torch.cat(no_dl_labels, dim=0)
+    X_val = all_data.numpy()
+    y_val = all_labels.numpy()
+    y_val = np.argmax(y_val, axis=1)
+    return X_val, y_val
+
 def read_csv_files_in_folder(folder_path):
     """
     Reads CSV files from a folder and concatenates them into a single pandas DataFrame.
