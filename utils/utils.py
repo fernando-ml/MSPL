@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import yaml
+from sklearn.metrics import  precision_score, recall_score, f1_score
 
 def device():   
     """ 
@@ -84,25 +85,38 @@ def multi_label_balanced_accuracy(y_true, y_pred):
     """
     Calculate balanced accuracy for multi-label classification.
     
-    :param y_true: True labels (n_samples, n_classes)
-    :param y_pred: Predicted labels (n_samples, n_classes)
-    :return: Balanced accuracy score
+    :param y_true: True labels, either one-hot encoded or single class labels (n_samples, n_classes) or (n_samples,)
+    :param y_pred: Predicted labels, either one-hot encoded or single class labels (n_samples, n_classes) or (n_samples,)
+    :return: Balanced accuracy score and list of per-class accuracies
     """
-    y_true = np.array(y_true)  # Convert to numpy array
-    y_pred = np.array(y_pred)  # Convert to numpy array
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+
+    # Determine the number of classes from y_true if possible, otherwise use y_pred
+    n_classes = y_true.shape[1] if len(y_true.shape) > 1 else len(np.unique(np.concatenate((y_true, y_pred))))
+
+    # Handle case where labels are not one-hot encoded
+    if len(y_true.shape) == 1:
+        y_true_one_hot = np.zeros((y_true.size, n_classes))
+        y_true_one_hot[np.arange(y_true.size), y_true] = 1
+        y_true = y_true_one_hot
     
-    n_classes = y_true.shape[1]
+    if len(y_pred.shape) == 1:
+        y_pred_one_hot = np.zeros((y_pred.size, n_classes))
+        y_pred_one_hot[np.arange(y_pred.size), y_pred] = 1
+        y_pred = y_pred_one_hot
+    
     class_accuracies = []
-    
+
     for i in range(n_classes):
         true_pos = np.sum((y_true[:, i] == 1) & (y_pred[:, i] == 1))
         true_neg = np.sum((y_true[:, i] == 0) & (y_pred[:, i] == 0))
         false_pos = np.sum((y_true[:, i] == 0) & (y_pred[:, i] == 1))
         false_neg = np.sum((y_true[:, i] == 1) & (y_pred[:, i] == 0))
-        
+
         sensitivity = true_pos / (true_pos + false_neg) if (true_pos + false_neg) > 0 else 0
         specificity = true_neg / (true_neg + false_pos) if (true_neg + false_pos) > 0 else 0
-        
+
         class_accuracies.append((sensitivity + specificity) / 2)
-    
+
     return np.mean(class_accuracies), class_accuracies

@@ -1,5 +1,6 @@
 # Dataset selection
 selected-dataset: 'CICIDS2017' #"CICEVSE_Network2024" # CICEVSE_PowerB2024 # "CICIoV2024" "CICIDS2017"
+prototypical: True
 polyak: True
 # Training and experiment setup
 setup:
@@ -15,9 +16,10 @@ setup:
     n_samples: 200
     sample_per_class: 2
 
-  scenario_config:
+  prototypical_config:
     weights: ["euclidean", "chebyshev", "cosine", "wasserstein"]
     vals: ['1/4', '1/4', '1/4', '1/4']
+  non_dl_model: "gradient_boosting" # "logistic_regression", "random_forest", "gradient_boosting", "knn"
 
 # Output configuration
 output:
