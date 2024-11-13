@@ -1,4 +1,5 @@
 import json
+import sklearn.preprocessing
 import yaml
 from pathlib import Path
 import torch
@@ -32,10 +33,11 @@ Path(train_history_path).mkdir(parents=True, exist_ok=True)
 X_val, y_val = dataloader_to_numpy(dataloader=val_dataloader)
 
 best_metrics = {'balanced_accuracy': [],
-                # 'loss': [],
                 'val_loss': [],
-                'val_f1': []}
-
+                'val_f1': [],
+                'val_AUPRC': [],
+                'val_MCC': []}
+print(f'results/{config_setup_name.replace("/", "over").replace(".", "point")}.json')
 # TODO: add ML flow logging .... for each epoch in experiments log to ML flow, also log to ML flow at the end of each experiment
 for i in range(config['setup']['params']['n_experiments']):
     print(f"\n###############################\nStarting experiment {i+1}/{config['setup']['params']['n_experiments']}\n###############################\n")
@@ -54,10 +56,13 @@ for i in range(config['setup']['params']['n_experiments']):
                                                                     val_dataloader=val_dataloader,
                                                                         episodes=episodes, epochs=config['setup']['params']['epochs'], 
                                                                         weights=distances_weights, 
-                                            polyak=config['polyak'], polyak_decay=0.999)
+                                            polyak=config['polyak'], polyak_decay=0.999,
+                                            best_model_path=f'{config["output"]["best_models"]}{config_setup_name.replace("/", "over").replace(".", "point")}.pth')
         best_metrics['balanced_accuracy'].append(max(experiment_history["balanced_accuracy"]))
         best_metrics['val_loss'].append(max(experiment_history["val_loss"]))
         best_metrics['val_f1'].append(max(experiment_history["val_f1"]))
+        best_metrics['val_AUPRC'].append(max(experiment_history["val_AUPRC"]))
+        best_metrics['val_MCC'].append(max(experiment_history["val_MCC"]))
         
         with open(f'{train_history_path}/exp_{i}.json', 'w') as f:
             json.dump(experiment_history, f, indent=4)
@@ -70,6 +75,10 @@ for i in range(config['setup']['params']['n_experiments']):
         best_metrics['balanced_accuracy'].append(acc)
         best_metrics['val_loss'].append(0)
         best_metrics['val_f1'].append(f1_score(y_val, y_pred, average='macro'))
+        best_metrics['val_AUPRC'].append(average_precision_score(sklearn.preprocessing.label_binarize(y_val, classes=np.arange(n_classes)), 
+                                                                 sklearn.preprocessing.label_binarize(y_pred, classes=np.arange(n_classes)), 
+                                                                 average='macro'))
+        best_metrics['val_MCC'].append(matthews_corrcoef(y_val, y_pred))
         
 with open(f'results/{config_setup_name.replace("/", "over").replace(".", "point")}.json', 'w') as f:
     json.dump(best_metrics, f, indent=4)

@@ -70,7 +70,7 @@ class MLP_MultiLabel(nn.Module):
         self.input_layer = nn.Linear(n_features, 64)
         self.hidden_layer1 = nn.Linear(64, 32)
         self.attention = Attention(32, n_features)
-        # self.hidden_layer2 = nn.Linear(32, 16)
+        self.hidden_layer2 = nn.Linear(32, 16)
         self.output_layer = nn.Linear(16, n_classes)
 
     def forward(self, model_input, return_embedding=False):
@@ -78,7 +78,7 @@ class MLP_MultiLabel(nn.Module):
         x = F.dropout(x, p=0.5)
         x = F.relu(self.hidden_layer1(x))
         x = F.dropout(x, p=0.5)
-        x, att_weights = self.attention(x)
+        x = self.hidden_layer2(x)
         embedding = F.relu(x)
         if return_embedding:
             return embedding

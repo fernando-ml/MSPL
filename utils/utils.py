@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import yaml
-from sklearn.metrics import  precision_score, recall_score, f1_score
+from sklearn.metrics import  precision_score, recall_score, f1_score, matthews_corrcoef, precision_recall_curve, auc
 
 def device():   
     """ 

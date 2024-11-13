@@ -1,14 +1,14 @@
 # Dataset selection
 selected-dataset: 'CICIDS2017' #"CICEVSE_Network2024" # CICEVSE_PowerB2024 # "CICIoV2024" "CICIDS2017"
 prototypical: True
-polyak: True
+polyak: False
 # Training and experiment setup
 setup:
   params:
     train-batch-size: 32
     val-batch-size: 512
     epochs: 10
-    lr: 0.004
+    lr: 0.005
     n_episodes: 200
     n_support: 40
     n_query: 20
@@ -18,13 +18,13 @@ setup:
 
   prototypical_config:
     weights: ["euclidean", "chebyshev", "cosine", "wasserstein"]
-    vals: ['1/4', '1/4', '1/4', '1/4']
+    vals: ['0', '1/3', '1/3', '1/3']
   non_dl_model: "gradient_boosting" # "logistic_regression", "random_forest", "gradient_boosting", "knn"
 
 # Output configuration
 output:
   train-history: "train_history" # Directory for training outputs
-  best_models: "outputs/models" # Directory for saving best models
+  best_models: "models/saved_models/best_model_" # Directory for saving best models
 # Additional configuration
 logging:
   level: "INFO"

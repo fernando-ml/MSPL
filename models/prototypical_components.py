@@ -1,10 +1,11 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from utils.utils import multi_label_balanced_accuracy
 from models.model_components import SaveBestModelCallback
 import random
-from sklearn.metrics import  precision_score, recall_score, f1_score
+from sklearn.metrics import  precision_score, recall_score, f1_score, matthews_corrcoef, average_precision_score
 
 from config import *
 
@@ -137,22 +138,22 @@ def new_validate_with_prototypes(model, dataloader, weights, alpha=1):
 
     # Calculate metrics
     f1 = f1_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
-    precision = precision_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
-    recall = recall_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average='micro')
+    mcc = matthews_corrcoef(np.argmax(all_labels.cpu().numpy(), axis=1), np.argmax(binary_predictions.cpu().numpy(), axis=1))
+    auprc = average_precision_score(all_labels.cpu().numpy(), binary_predictions.cpu().numpy(), average="micro")
     
     balanced_acc, classes_acc = multi_label_balanced_accuracy(all_labels.cpu().numpy(), binary_predictions.cpu().numpy())
 
     # calculate average loss
     avg_loss = total_loss / len(dataloader)
 
-    return balanced_acc, avg_loss, f1, precision, recall, binary_predictions, classes_acc
+    return balanced_acc, avg_loss, f1, mcc, auprc
 
-def multi_space_episodic_training_with_polyak(model, optimizer, epochs, episodes, val_dataloader, weights, polyak, polyak_decay=0.999):
+def multi_space_episodic_training_with_polyak(model, optimizer, epochs, episodes, val_dataloader, weights, polyak, polyak_decay=0.999, best_model_path=None):
     history = {
         "epochs": [], "loss": [], "val_loss": [], "balanced_accuracy": [],
-        "val_f1": [], "val_precision": [], "val_recall": [], 'val_classes_acc': []
+        "val_f1": [], "val_precision": [], "val_recall": [], 'val_classes_acc': [], 'val_MCC' : [], 'val_AUPRC': [],
     }
-    save_best_model_cb = SaveBestModelCallback(save_path=best_model_path, target='val_f1', mode='max')
+    save_best_model_cb = SaveBestModelCallback(save_path=best_model_path, target='balanced_accuracy', mode='max')
     
     if polyak:
         ema_model = type(model)(model.input_layer.in_features, model.output_layer.out_features)
@@ -189,24 +190,23 @@ def multi_space_episodic_training_with_polyak(model, optimizer, epochs, episodes
         avg_train_loss = total_loss / len(episodes)
         if polyak:
             # Use the EMA model for validation
-            balanced_acc, val_loss, val_f1, val_precision, val_recall, val_predictions, classes_acc = new_validate_with_prototypes(ema_model, val_dataloader, weights)
+            balanced_acc, val_loss, val_f1, mcc, auprc = new_validate_with_prototypes(ema_model, val_dataloader, weights)
             save_best_model_cb(ema_model, balanced_acc, epoch)
         else:
-            balanced_acc, val_loss, val_f1, val_precision, val_recall, val_predictions, classes_acc = new_validate_with_prototypes(model, val_dataloader, weights)
-            save_best_model_cb(model, val_f1, epoch)
+            balanced_acc, val_loss, val_f1, mcc, auprc = new_validate_with_prototypes(model, val_dataloader, weights)
+            save_best_model_cb(model, balanced_acc, epoch)
         
-        print(f"Epoch {epoch}")
-        print(f"Training Loss: {avg_train_loss:.4f}")
-        print(f"Val Loss: {val_loss:.4f}, Balanced Accuracy: {balanced_acc:.4f}")
+        # print(f"Epoch {epoch}")
+        # print(f"Training Loss: {avg_train_loss:.4f}")
+        # print(f"Val Loss: {val_loss:.4f}, Balanced Accuracy: {balanced_acc:.4f}")
         
         history["epochs"].append(epoch)
         history["loss"].append(avg_train_loss)
         history["val_loss"].append(val_loss)
         history["balanced_accuracy"].append(balanced_acc)
         history["val_f1"].append(val_f1)
-        history["val_precision"].append(val_precision)
-        history["val_recall"].append(val_recall)
-        history["val_classes_acc"].append(classes_acc)
+        history["val_MCC"].append(mcc)
+        history["val_AUPRC"].append(auprc)
     if polyak:
         save_best_model_cb.load_best_model(model=ema_model)
     else:
