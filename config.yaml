@@ -1,6 +1,6 @@
 # Dataset selection
 selected-dataset: 'CICIDS2017' #"CICEVSE_Network2024" # CICEVSE_PowerB2024 # "CICIoV2024" "CICIDS2017"
-prototypical: True
+prototypical: False
 polyak: False
 # Training and experiment setup
 setup:
@@ -19,7 +19,7 @@ setup:
   prototypical_config:
     weights: ["euclidean", "chebyshev", "cosine", "wasserstein"]
     vals: ['0', '1/3', '1/3', '1/3']
-  non_dl_model: "gradient_boosting" # "logistic_regression", "random_forest", "gradient_boosting", "knn"
+  non_dl_model: "logistic_regression" # "logistic_regression", "random_forest", "gradient_boosting", "knn"
 
 # Output configuration
 output:
@@ -29,8 +29,3 @@ output:
 logging:
   level: "INFO"
   save_frequency: 10 # Save checkpoints every N epochs
-
-# # Hardware configuration
-# hardware:
-#   gpu_id: 0
-#   num_workers: 4 # Number of data loading workers

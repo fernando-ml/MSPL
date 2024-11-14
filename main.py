@@ -80,5 +80,5 @@ for i in range(config['setup']['params']['n_experiments']):
                                                                  average='macro'))
         best_metrics['val_MCC'].append(matthews_corrcoef(y_val, y_pred))
         
-with open(f'results/{config_setup_name.replace("/", "over").replace(".", "point")}.json', 'w') as f:
+with open(f'results/{config["selected-dataset"]}_{config_setup_name.replace("/", "over").replace(".", "point")}.json', 'w') as f:
     json.dump(best_metrics, f, indent=4)
