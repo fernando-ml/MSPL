@@ -1,0 +1,4 @@
+# Dataset selection
+selected-dataset: "CICIDS2017" #"CICEVSE_Network2024" # CICEVSE_PowerB2024 # "CICIoV2024" "CICIDS2017"
+mode: "baseline"
+models: ["logistic_regression", "random_forest", "gradient_boosting", "knn"]
