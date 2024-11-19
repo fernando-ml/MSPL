@@ -1,17 +1,17 @@
-# TODO
+# DoS Project
 
-- [x] wrap dataset loading in a function... handle different sizes, formats, cols to drop, etc....
+## Run Vanilla
 
-- [x] wrap preprocessing in a function
-
-- [ ] add ML flow logging .... for each epoch in experiments log to ML flow, also log to ML flow at the end of each experiment
-
-## ML Flow
-
-to start the server using postgres as backend
+To run the prototypical mode do:
 
 ```bash
-mlflow server --backend-store-uri postgresql://uri
+python main.py config.yaml
+```
+
+To run the baseline mode do:
+
+```bash
+python main.py baseline_config.yaml
 ```
 
 ## Data
@@ -33,26 +33,29 @@ dataset:
     test:
     val:
   cols:
-setup:
-  params:
-    train-batch-size: 1
-    val-batch-size:
-    epochs:
-    lr:
-    n_episodes:
-    n_support:
-    n_query:
-    n_experiments:
-    n_samples:
-    sample_per_class:
-  scenario:
-    polyak:
-      weights: ["euclidean", ......]
-      vals: [1, .....]
-    no-polyak:
-      weights: [eucl, chebyshev, cosine]
-      vals: [1, 0, 0]
+params:
+  train-batch-size: 1
+  val-batch-size:
+  epochs:
+  lr:
+  n_episodes:
+  n_support:
+  n_query:
+  n_experiments:
+  n_samples:
+  sample_per_class:
+scenarios:
+  - polyak: boolean
+    vals: [1, .....]
 output:
   train:
   best_models:
+```
+
+## FUTURE: ML Flow
+
+to start the server using postgres as backend
+
+```bash
+mlflow server --backend-store-uri postgresql://uri
 ```
