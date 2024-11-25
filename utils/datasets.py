@@ -30,7 +30,10 @@ class DatasetManager:
                     self.loaded_dataset = pd.read_parquet(dataset['path'])
                     break
         self.target_column = dataset['target_column']
-        self.columns_to_drop = dataset['columns-to-drop']
+        if dataset.get('columns-to-drop') is not None:
+            self.columns_to_drop = dataset['columns-to-drop']
+        else:
+            self.columns_to_drop = []
 
     def preprocess_data(self):
         if isinstance(self.loaded_dataset, tuple):
