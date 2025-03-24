@@ -1,116 +1,156 @@
-import json
-import sklearn.preprocessing
-import yaml
-from pathlib import Path
-import torch
-from utils.utils import *
-from utils.datasets import *
-from models.model_components import *
-from models.prototypical_components import *
-from models.no_DL_models import *
-if len(sys.argv) < 2:
-    print("Please provide the path to the YAML config file.")
-    sys.exit(1)
+"""
+Dual-Space (DOS) Project - Main script
 
-yaml_path = sys.argv[1]
-config = yaml.safe_load(open(yaml_path))
+This is the main entry point for the DOS project that handles loading configuration,
+setting up the environment, and running the specified scenarios.
+"""
 
-
-def get_config_setup_name(scenario):
-    weights = ["euclidean", "chebyshev", "cosine", "wasserstein"]
-    config_setup_name = 'polyak' if scenario['polyak'] else 'no-polyak'
-    distances_weights = dict(zip(weights, scenario['vals']))
-
-    config_setup_name = config_setup_name + '_' + \
-        '_'.join([f"{k}-{v}" for k, v in distances_weights.items()])
-    distances_weights = {key: eval(val)
-                         for key, val in distances_weights.items()}
-
-    return config_setup_name, distances_weights
+import sys
+import os
+import argparse
+from datetime import datetime
+from utils.config_parser import load_config, get_output_paths, get_scenario_name
+from utils.utils import get_device, print_section
+from trainer import train_prototypical_model, train_traditional_model
+from dataloader import DatasetManager
 
 
-for scenario in config['scenarios']:
+def save_results(config, metrics, scenario_name, dataset_name):
+    """Save experiment results to file.
+    
+    Args:
+        config (dict): Configuration dictionary
+        metrics (dict): Metrics to save
+        scenario_name (str): Name of the scenario
+        dataset_name (str): Name of the dataset
+    """
+    output_dir = "results"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{output_dir}/{dataset_name}_{scenario_name}_{timestamp}.txt"
+    
+    with open(filename, 'w') as f:
+        f.write(f"Dataset: {dataset_name}\n")
+        f.write(f"Scenario: {scenario_name}\n")
+        f.write(f"Mode: {config['mode']}\n\n")
+        f.write("Results:\n")
+        for metric_name, value in metrics.items():
+            f.write(f"{metric_name}: {value}\n")
+    
+    print(f"Results saved to {filename}")
 
-    distances_weights = None
 
+def parse_arguments():
+    """Parse command line arguments.
+    
+    Returns:
+        argparse.Namespace: Parsed command line arguments
+    """
+    parser = argparse.ArgumentParser(description='DOS (Dual-Space) Project - Multi-space episodic training')
+    
+    # Required arguments
+    parser.add_argument('config_file', help='Path to the configuration YAML file')
+    parser.add_argument('--dataset', '-d', required=True, 
+                      help='Dataset to use: CICEVSE_Network2024, CICIDS2017, CICEVSE_PowerB2024, CICIoV2024, etc.')
+    
+    # Optional arguments
+    parser.add_argument('--mode', '-m', choices=['prototypical', 'traditional'], 
+                      help='Training mode (overrides config file)')
+    parser.add_argument('--output-dir', '-o', help='Custom output directory')
+    parser.add_argument('--epochs', '-e', type=int, help='Number of epochs (overrides config file)')
+    parser.add_argument('--samples', '-s', type=int, help='Number of samples (overrides config file)')
+    
+    return parser.parse_args()
+
+
+def main():
+    """Main function for the DOS project."""
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Load configuration
+    config = load_config(args.config_file)
+    
+    # Override configuration with command line arguments
+    if args.dataset:
+        config['selected-dataset'] = args.dataset
+    
+    if args.mode:
+        config['mode'] = args.mode
+    
+    if args.epochs and 'epochs' in config['params']:
+        config['params']['epochs'] = args.epochs
+    
+    if args.samples and 'n_samples' in config['params']:
+        config['params']['n_samples'] = args.samples
+    
+    # Create output directories
+    if args.output_dir:
+        config['output']['train-history'] = os.path.join(args.output_dir, "train_history")
+        config['output']['best_models'] = os.path.join(args.output_dir, "models/best_model_")
+    
+    output_paths = get_output_paths(config)
+    
+    # Set device
+    device = get_device()
+    print(f"Using device: {device}")
+    
+    # Print run info
     if config['mode'] == 'prototypical':
-        config_setup_name, distances_weights = get_config_setup_name(scenario)
+        print_section("Starting Deep Learning Run")
+        run_type = "Deep Learning (Prototypical Network)"
     else:
-        config_setup_name = scenario
-    print(f"{5 * '#'} Starting scenario {config_setup_name} {5 * '#'}")
-
-    dm = DatasetManager(config)
-    X_train, y_train, val_dataloader = dm.preprocess_data()
-    n_features, n_classes = int(X_train.shape[1]), int(y_train.shape[1])
-    train_history_path = config['output']['train-history']
-    Path(train_history_path).mkdir(parents=True, exist_ok=True)
-
-    X_val, y_val = dataloader_to_numpy(dataloader=val_dataloader)
-
-    best_metrics = {'balanced_accuracy': [],
-                    'val_loss': [],
-                    'val_f1': [],
-                    'val_AUPRC': [],
-                    'val_MCC': []
-                    }
-
-    print(
-        f'results/{config_setup_name.replace("/", "over").replace(".", "point")}.json')
-
-    for i in range(config['params']['n_experiments']):
-        print(
-            f"\n####################\nStarting experiment {i+1}/{config['params']['n_experiments']}\n#######################\n")
-
-        X_train_sampled, y_train_sampled = stratified_sample(datasets=[X_train, y_train],
-                                                             n_samples=config['params']['n_samples'],
-                                                             sample_per_class=config['params']['sample_per_class'])
+        print_section("Starting Traditional ML Run")
+        run_type = "Traditional Machine Learning"
+    
+    print(f"Run Type: {run_type}")
+    print(f"Dataset: {config['selected-dataset']}")
+    print(f"Configuration File: {args.config_file}")
+    
+    # Initialize data manager and preprocess data
+    print_section("Loading and Preprocessing Data")
+    dataset_manager = DatasetManager(config)
+    X_train, y_train, val_dataloader = dataset_manager.preprocess_data()
+    
+    # Run scenarios
+    total_scenarios = len(config['scenarios'])
+    print(f"Total scenarios to run: {total_scenarios}")
+    
+    for i, scenario in enumerate(config['scenarios']):
+        # Get scenario configuration
+        distances_weights = None
         if config['mode'] == 'prototypical':
-            model = MLP_MultiLabel(n_features=n_features, n_classes=n_classes)
-            optimizer = torch.optim.Adam(
-                model.parameters(), lr=config['params']['lr'])
-            episodes, unique_indices = create_episodes(X_train_sampled,
-                                                       y_train_sampled,
-                                                       n_episodes=config['params']['n_episodes'],
-                                                       n_support=config['params']['n_support'],
-                                                       n_query=config['params']['n_query'])
-
-            print(
-                f"Total unique inputs used for training: {len(unique_indices)}")
-
-            experiment_history = multi_space_episodic_training_with_polyak(model=model, optimizer=optimizer,
-                                                                           val_dataloader=val_dataloader,
-                                                                           episodes=episodes,
-                                                                           epochs=config['params']['epochs'],
-                                                                           weights=distances_weights,
-                                                                           polyak=scenario['polyak'],
-                                                                           polyak_decay=0.999,
-                                                                           best_model_path=f'{config["output"]["best_models"]}{config_setup_name.replace("/", "over").replace(".", "point")}.pth')
-            best_metrics['balanced_accuracy'].append(
-                max(experiment_history["balanced_accuracy"]))
-            best_metrics['val_loss'].append(
-                max(experiment_history["val_loss"]))
-            best_metrics['val_f1'].append(max(experiment_history["val_f1"]))
-            best_metrics['val_AUPRC'].append(
-                max(experiment_history["val_AUPRC"]))
-            best_metrics['val_MCC'].append(max(experiment_history["val_MCC"]))
-
-            with open(f'{train_history_path}/exp_{i}.json', 'w') as f:
-                json.dump(experiment_history, f, indent=4)
-
+            config_setup_name, distances_weights = get_scenario_name(scenario, config['mode'])
         else:
-            model = get_non_dl_model(scenario)
-            model.fit(X_train_sampled, np.argmax(y_train_sampled, axis=1))
-            y_pred = model.predict(X_val)
-            acc, _ = multi_label_balanced_accuracy(y_val, y_pred)
-            best_metrics['balanced_accuracy'].append(acc)
-            best_metrics['val_loss'].append(0)
-            best_metrics['val_f1'].append(
-                f1_score(y_val, y_pred, average='macro'))
-            best_metrics['val_AUPRC'].append(average_precision_score(sklearn.preprocessing.label_binarize(y_val, classes=np.arange(n_classes)),
-                                                                     sklearn.preprocessing.label_binarize(
-                y_pred, classes=np.arange(n_classes)),
-                average='macro'))
-            best_metrics['val_MCC'].append(matthews_corrcoef(y_val, y_pred))
+            config_setup_name = scenario
+            
+        print_section(f"Starting scenario {i+1}/{total_scenarios}: {config_setup_name}")
+        
+        # Train model based on mode
+        if config['mode'] == 'prototypical':
+            best_metrics = train_prototypical_model(
+                config=config,
+                X_train=X_train,
+                y_train=y_train,
+                val_dataloader=val_dataloader,
+                config_setup_name=config_setup_name,
+                distances_weights=distances_weights
+            )
+        else:
+            best_metrics = train_traditional_model(
+                config=config,
+                X_train=X_train,
+                y_train=y_train,
+                val_dataloader=val_dataloader,
+                model_name=config_setup_name
+            )
+        
+        # Save results
+        save_results(config, best_metrics, config_setup_name, config['selected-dataset'])
+        
+    print_section(f"All {total_scenarios} scenarios completed")
 
-    with open(f'results/{config["selected-dataset"]}_{config_setup_name.replace("/", "over").replace(".", "point")}.json', 'w') as f:
-        json.dump(best_metrics, f, indent=4)
+
+if __name__ == "__main__":
+    main()

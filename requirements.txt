@@ -4,3 +4,6 @@ scikit-learn
 torch
 mlflow 
 psycopg2-binary
+wandb
+matplotlib
+seaborn
