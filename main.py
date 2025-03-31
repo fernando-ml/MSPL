@@ -72,9 +72,8 @@ def main():
     # Load configuration
     config = load_config(args.config_file)
     
-    # Override configuration with command line arguments
-    if args.dataset:
-        config['selected-dataset'] = args.dataset
+    # Set dataset from command line
+    config['selected-dataset'] = args.dataset
     
     if args.mode:
         config['mode'] = args.mode

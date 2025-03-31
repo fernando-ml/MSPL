@@ -31,7 +31,7 @@ def load_config(config_path):
             config = yaml.safe_load(f)
             
         # Validate the config has required sections
-        required_sections = ['selected-dataset', 'mode', 'params', 'output']
+        required_sections = ['mode', 'params', 'output']  # 'selected-dataset' is passed via CLI
         for section in required_sections:
             if section not in config:
                 print(f"Error: Missing required configuration section '{section}'")

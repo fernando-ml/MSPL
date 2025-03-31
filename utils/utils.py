@@ -129,10 +129,27 @@ def dataloader_to_numpy(dataloader):
     all_labels = []
     
     for features, labels in dataloader:
-        all_features.append(features.cpu().numpy())
-        all_labels.append(labels.cpu().numpy())
+        # Move tensors to CPU and convert to numpy
+        features_np = features.cpu().detach().numpy()
+        labels_np = labels.cpu().detach().numpy()
+        
+        # Handle both 2D and 1D label tensors
+        if len(labels_np.shape) == 1:
+            labels_np = labels_np.reshape(-1, 1)
+            
+        # Add batch to lists
+        all_features.append(features_np)
+        all_labels.append(labels_np)
     
-    return np.vstack(all_features), np.vstack(all_labels)
+    # Concatenate batches along the first dimension
+    features_array = np.concatenate(all_features, axis=0)
+    labels_array = np.concatenate(all_labels, axis=0)
+    
+    # Squeeze labels back to 1D if they were 1D originally
+    if labels_array.shape[1] == 1:
+        labels_array = labels_array.squeeze(axis=1)
+        
+    return features_array, labels_array
 
 def print_section(title, char='#', length=40):
     """

@@ -10,6 +10,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score, matthews_co
 from sklearn.metrics import precision_recall_curve, auc, average_precision_score, confusion_matrix
 from sklearn.preprocessing import label_binarize
 from typing import Dict, List, Union, Tuple, Any, Optional
+import torch
 
 
 def calculate_multi_label_balanced_accuracy(y_true, y_pred):
@@ -44,18 +45,28 @@ def multi_label_balanced_accuracy(y_true, y_pred):
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
 
-    # Determine the number of classes from y_true if possible, otherwise use y_pred
-    n_classes = y_true.shape[1] if len(y_true.shape) > 1 else len(np.unique(np.concatenate((y_true, y_pred))))
+    # Determine number of classes more safely
+    if len(y_true.shape) > 1:
+        n_classes = y_true.shape[1]
+    elif len(y_pred.shape) > 1:
+        n_classes = y_pred.shape[1]
+    else:
+        # Both are 1D arrays, use unique values
+        n_classes = len(np.unique(np.concatenate((y_true, y_pred))))
 
     # Handle case where labels are not one-hot encoded
     if len(y_true.shape) == 1:
         y_true_one_hot = np.zeros((y_true.size, n_classes))
-        y_true_one_hot[np.arange(y_true.size), y_true] = 1
+        for i in range(len(y_true)):
+            if y_true[i] < n_classes:  # Ensure class index is valid
+                y_true_one_hot[i, int(y_true[i])] = 1
         y_true = y_true_one_hot
     
     if len(y_pred.shape) == 1:
         y_pred_one_hot = np.zeros((y_pred.size, n_classes))
-        y_pred_one_hot[np.arange(y_pred.size), y_pred] = 1
+        for i in range(len(y_pred)):
+            if y_pred[i] < n_classes:  # Ensure class index is valid
+                y_pred_one_hot[i, int(y_pred[i])] = 1
         y_pred = y_pred_one_hot
     
     class_accuracies = []
@@ -74,36 +85,48 @@ def multi_label_balanced_accuracy(y_true, y_pred):
     return np.mean(class_accuracies), class_accuracies
 
 
-def calculate_metrics(y_true: np.ndarray, 
-                     y_pred: np.ndarray, 
-                     y_prob: Optional[np.ndarray] = None) -> Dict[str, float]:
+def calculate_metrics(y_true, y_pred, y_pred_prob=None):
     """
-    Calculate comprehensive metrics for classification tasks.
+    Calculate classification metrics
     
     Args:
-        y_true: True labels (multi-label or single-label)
-        y_pred: Predicted labels (multi-label or single-label)
-        y_prob: Optional probability predictions for AUPRC calculation
+        y_true: Ground truth labels
+        y_pred: Predicted labels
+        y_pred_prob: Predicted probabilities (optional)
         
     Returns:
-        Dictionary of metrics including accuracy, precision, recall, F1, MCC, AUPRC
+        dict: Dictionary of metrics
     """
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
     
-    # Handle multi-label vs single-label
-    multi_label = len(y_true.shape) > 1 and y_true.shape[1] > 1
+    # Convert to numpy arrays if they're not already
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
+    if y_pred_prob is not None and isinstance(y_pred_prob, torch.Tensor):
+        y_pred_prob = y_pred_prob.detach().cpu().numpy()
     
-    if multi_label:
-        # For multi-label, we'll calculate metrics in two ways:
-        # 1. Treat each label as binary classification and average (macro)
-        # 2. For metrics requiring single label, use argmax
+    # Ensure consistent formatting (both one-hot encoded or both class indices)
+    if len(y_true.shape) > 1 and len(y_pred.shape) > 1:
+        # Both are one-hot encoded, convert to class indices
         y_true_single = np.argmax(y_true, axis=1)
         y_pred_single = np.argmax(y_pred, axis=1)
+    elif len(y_true.shape) > 1:
+        # y_true is one-hot encoded, y_pred is class indices
+        y_true_single = np.argmax(y_true, axis=1)
+        y_pred_single = y_pred
+    elif len(y_pred.shape) > 1:
+        # y_pred is one-hot encoded, y_true is class indices
+        y_pred_single = np.argmax(y_pred, axis=1)
+        y_true_single = y_true
     else:
-        # For single-label
+        # Both are already class indices
         y_true_single = y_true
         y_pred_single = y_pred
+    
+    # Ensure both arrays have the same format
+    y_true_single = y_true_single.flatten()
+    y_pred_single = y_pred_single.flatten()
     
     # Calculate metrics
     metrics = {}
@@ -126,7 +149,7 @@ def calculate_metrics(y_true: np.ndarray,
     metrics['accuracy'] = np.mean(y_true_single == y_pred_single)
     
     # Add AUPRC if probabilities are provided, else use predictions
-    n_classes = y_true.shape[1] if len(y_true.shape) > 1 else len(np.unique(np.concatenate((y_true_single, y_pred_single))))
+    n_classes = max(len(np.unique(y_true_single)), len(np.unique(y_pred_single)))
     
     # Prepare binary versions for AUPRC
     if len(y_true.shape) == 1:
@@ -134,9 +157,9 @@ def calculate_metrics(y_true: np.ndarray,
     else:
         y_true_bin = y_true
     
-    if y_prob is not None:
+    if y_pred_prob is not None:
         # Use probabilities if provided
-        y_score = y_prob
+        y_score = y_pred_prob
     else:
         # Use predictions otherwise
         if len(y_pred.shape) == 1:
@@ -154,30 +177,57 @@ def calculate_metrics(y_true: np.ndarray,
     return metrics
 
 
-def calculate_per_class_metrics(y_true: np.ndarray, 
-                               y_pred: np.ndarray) -> Dict[str, np.ndarray]:
+def calculate_per_class_metrics(y_true, y_pred):
     """
     Calculate per-class metrics for each class in the dataset.
     
     Args:
-        y_true: True labels (multi-label or single-label)
+        y_true: Ground truth labels (multi-label or single-label)
         y_pred: Predicted labels (multi-label or single-label)
         
     Returns:
-        Dictionary with keys 'precision', 'recall', 'f1', 'accuracy'
-        each containing an array of per-class metrics
+        Dictionary of per-class metrics
     """
+    # Convert to numpy arrays if they're not already
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
+    
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
     
-    # Determine if multi-label and get number of classes
-    multi_label = len(y_true.shape) > 1 and y_true.shape[1] > 1
-    
-    if multi_label:
+    # Ensure consistent formatting for both arrays
+    if len(y_true.shape) > 1 and len(y_pred.shape) > 1:
+        # Both are one-hot encoded, keep as is
+        multi_label = True
         n_classes = y_true.shape[1]
+        y_true_bin = y_true
+        y_pred_bin = y_pred
+    elif len(y_true.shape) > 1:
+        # y_true is one-hot, y_pred is indices
+        multi_label = True
+        n_classes = y_true.shape[1]
+        # Convert y_pred to one-hot
+        y_true_bin = y_true
+        y_pred_bin = np.zeros((len(y_pred), n_classes))
+        for i, idx in enumerate(y_pred):
+            if 0 <= idx < n_classes:  # Ensure valid index
+                y_pred_bin[i, int(idx)] = 1
+    elif len(y_pred.shape) > 1:
+        # y_pred is one-hot, y_true is indices
+        multi_label = True
+        n_classes = y_pred.shape[1]
+        # Convert y_true to one-hot
+        y_pred_bin = y_pred
+        y_true_bin = np.zeros((len(y_true), n_classes))
+        for i, idx in enumerate(y_true):
+            if 0 <= idx < n_classes:  # Ensure valid index
+                y_true_bin[i, int(idx)] = 1
     else:
-        # For single-label, determine number of classes
-        unique_classes = np.unique(np.concatenate((y_true, y_pred)))
+        # Both are indices, convert to one-hot
+        multi_label = False
+        unique_classes = np.unique(np.concatenate((y_true.flatten(), y_pred.flatten())))
         n_classes = len(unique_classes)
         
         # Convert to one-hot for per-class metrics
@@ -190,33 +240,32 @@ def calculate_per_class_metrics(y_true: np.ndarray,
     f1 = np.zeros(n_classes)
     accuracy = np.zeros(n_classes)
     
-    # Calculate metrics for each class
+    # Calculate per-class metrics
     for i in range(n_classes):
-        if multi_label:
-            y_true_class = y_true[:, i]
-            y_pred_class = y_pred[:, i]
-        else:
-            y_true_class = y_true_bin[:, i]
-            y_pred_class = y_pred_bin[:, i]
+        y_true_class = y_true_bin[:, i]
+        y_pred_class = y_pred_bin[:, i]
         
-        # Calculate confusion matrix values
+        # Calculate confusion matrix elements
         tp = np.sum((y_true_class == 1) & (y_pred_class == 1))
         tn = np.sum((y_true_class == 0) & (y_pred_class == 0))
         fp = np.sum((y_true_class == 0) & (y_pred_class == 1))
         fn = np.sum((y_true_class == 1) & (y_pred_class == 0))
-        
+
         # Calculate metrics
         precision[i] = tp / (tp + fp) if (tp + fp) > 0 else 0
         recall[i] = tp / (tp + fn) if (tp + fn) > 0 else 0
-        f1[i] = 2 * (precision[i] * recall[i]) / (precision[i] + recall[i]) if (precision[i] + recall[i]) > 0 else 0
+        f1[i] = 2 * precision[i] * recall[i] / (precision[i] + recall[i]) if (precision[i] + recall[i]) > 0 else 0
         accuracy[i] = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
     
-    return {
-        'precision': precision,
-        'recall': recall,
-        'f1': f1,
-        'accuracy': accuracy
+    # Create the metrics dictionary
+    metrics = {
+        'per_class_precision': precision,
+        'per_class_recall': recall,
+        'per_class_f1': f1,
+        'per_class_accuracy': accuracy
     }
+    
+    return metrics
 
 
 def calculate_all_metrics(y_true, y_pred, y_prob=None):

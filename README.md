@@ -25,13 +25,13 @@ Run an experiment using the command line interface:
 
 ```bash
 # Run a prototypical network experiment
-python main.py --dataset CIC-IDS-2017 --mode prototypical
+python main.py config_dl.yaml --dataset CIC-IDS-2017 --mode prototypical
 
 # Run a traditional ML experiment
-python main.py --dataset UNSW-NB15 --mode traditional
+python main.py config_traditional.yaml --dataset CIC-IDS-2017 --mode traditional
 
 # Customize training parameters
-python main.py --dataset CIC-IDS-2017 --mode prototypical --epochs 50 --samples 1000
+python main.py config_dl.yaml --dataset CIC-IDS-2017 --mode prototypical --epochs 50 --samples 1000
 ```
 
 ## Data Setup
@@ -112,7 +112,7 @@ To use WandB:
 wandb login
 
 # Run an experiment (metrics will be logged automatically)
-python main.py --dataset CIC-IDS-2017 --mode prototypical
+python main.py config_dl.yaml --dataset CIC-IDS-2017 --mode prototypical
 ```
 
 ## Project Structure
@@ -142,3 +142,5 @@ Support for MLFlow experiment tracking is planned:
 
 ```bash
 mlflow server --backend-store-uri postgresql://uri
+
+```

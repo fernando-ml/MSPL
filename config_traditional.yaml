@@ -1,6 +1,8 @@
 # Traditional ML Configuration
-# Note: Dataset is now specified via command line: --dataset DATASET_NAME
 mode: "traditional"
+
+# Dataset configuration
+datasets_config: "utils/datasets_config.yaml"  # Path to the dataset configurations
 
 # Traditional ML configuration
 nonDL_config:
@@ -23,3 +25,10 @@ params:
 output:
   train-history: "train_history/traditional" # Directory for training outputs
   best_models: "models/saved_models/traditional/best_model_" # Directory for saving best models
+
+# Define all scenarios to run (each is a model type from nonDL_config.model_types)
+scenarios:
+  - "logistic_regression"
+  - "random_forest"
+  - "gradient_boosting"
+  - "knn"

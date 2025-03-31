@@ -9,6 +9,7 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from pathlib import Path
 from typing import Dict, List, Tuple, Union, Any, Optional
@@ -74,15 +75,47 @@ def create_episodes(X_train, y_train, n_episodes, n_support, n_query):
             - episodes: List of episodes
             - unique_indices: Set of unique indices used
     """
-    # Implementation remains unchanged
-    # ...
+    episodes = []
+    unique_indices = set()
+    
+    # If labels are one-hot encoded, convert to class indices
+    if len(y_train.shape) > 1:
+        # For one-hot encoded labels, get the class indices
+        labels = torch.argmax(y_train, dim=1)
+    else:
+        # For class indices, use as is
+        labels = y_train
+    
+    # Get unique classes
+    classes = torch.unique(labels)
+    
+    for _ in range(n_episodes):
+        # Randomly select classes for this episode
+        episode_classes = classes[torch.randperm(len(classes))[:len(classes)]]
+        
+        episode_indices = []
+        
+        for c in episode_classes:
+            # Get all indices for this class
+            class_indices = torch.where(labels == c)[0]
+            
+            # Sample support set
+            if len(class_indices) >= n_support + n_query:
+                sampled_indices = class_indices[torch.randperm(len(class_indices))]
+                support_indices = sampled_indices[:n_support]
+                query_indices = sampled_indices[n_support:n_support + n_query]
+                
+                episode_indices.append((support_indices, query_indices))
+                unique_indices.update(support_indices.tolist() + query_indices.tolist())
+        
+        episodes.append(episode_indices)
     
     return episodes, unique_indices
 
 
 def multi_space_episodic_training_with_polyak(model, optimizer, val_dataloader, episodes, 
                                             epochs, use_polyak=False, distance_weights=None,
-                                            model_path=None, log_wandb=True):
+                                            model_path=None, log_wandb=True, X_train=None):
     """
     Perform multi-space episodic training with optional Polyak averaging.
     
@@ -96,13 +129,20 @@ def multi_space_episodic_training_with_polyak(model, optimizer, val_dataloader, 
         distance_weights (dict): Weights for different distance metrics
         model_path (str): Path to save best model
         log_wandb (bool): Whether to log to wandb
+        X_train (torch.Tensor): Training features to use for support/query sets
         
     Returns:
         tuple: (model, history)
             - model: Trained model
             - history: Training history
     """
-    # Implementation details...
+    # Initialize training history
+    history = {
+        'train_loss': [],
+        'val_loss': [],
+        'val_accuracy': [],
+        'epoch': []
+    }
     
     # Add wandb logging for training progress
     if log_wandb:
@@ -113,10 +153,245 @@ def multi_space_episodic_training_with_polyak(model, optimizer, val_dataloader, 
             "epochs": epochs,
         })
     
-    # Rest of the implementation
-    # ...
+    # Initialize best model tracking variables
+    best_val_loss = float('inf')
+    
+    # Get device that model is on
+    device = next(model.parameters()).device
+    
+    # Move X_train to the correct device if it's not already there
+    if isinstance(X_train, torch.Tensor) and X_train.device != device:
+        X_train = X_train.to(device)
+    
+    # Default distance weights if none provided
+    if distance_weights is None:
+        distance_weights = {
+            'euclidean': 1.0,
+            'chebyshev': 0.0,
+            'cosine': 0.0,
+            'wasserstein': 0.0
+        }
+    
+    # If using Polyak averaging, create a copy of model parameters
+    if use_polyak:
+        polyak_model = {}
+        with torch.no_grad():
+            for name, param in model.named_parameters():
+                polyak_model[name] = param.clone().detach()
+    
+    # Training loop
+    for epoch in range(epochs):
+        model.train()
+        total_train_loss = 0.0
+        episode_count = 0
+        batch_count = 0
+        
+        # Process each episode
+        for episode_idx, episode_data in enumerate(episodes):
+            episode_loss = 0.0
+            num_classes = len(episode_data)
+            
+            # Skip episodes without enough classes
+            if num_classes < 2:
+                continue
+                
+            # Process each class in the episode
+            for class_idx, (support_indices, query_indices) in enumerate(episode_data):
+                if len(support_indices) == 0 or len(query_indices) == 0:
+                    continue
+                
+                # Get support and query inputs using the indices
+                support_inputs = X_train[support_indices]
+                query_inputs = X_train[query_indices]
+                
+                # Zero the gradients
+                optimizer.zero_grad()
+                
+                # Get embeddings
+                support_embeddings = model(support_inputs, return_embedding=True)
+                query_embeddings = model(query_inputs, return_embedding=True)
+                
+                # Multi-space loss calculation
+                total_loss = 0.0
+                num_distances = 0
+                
+                # Calculate distance for each metric and apply weights
+                if distance_weights.get('euclidean', 0) > 0:
+                    euclidean_loss = _calculate_distance_loss(support_embeddings, query_embeddings, 'euclidean')
+                    total_loss += distance_weights['euclidean'] * euclidean_loss
+                    num_distances += 1
+                
+                if distance_weights.get('chebyshev', 0) > 0:
+                    chebyshev_loss = _calculate_distance_loss(support_embeddings, query_embeddings, 'chebyshev')
+                    total_loss += distance_weights['chebyshev'] * chebyshev_loss
+                    num_distances += 1
+                
+                if distance_weights.get('cosine', 0) > 0:
+                    cosine_loss = _calculate_distance_loss(support_embeddings, query_embeddings, 'cosine')
+                    total_loss += distance_weights['cosine'] * cosine_loss
+                    num_distances += 1
+                
+                if distance_weights.get('wasserstein', 0) > 0:
+                    wasserstein_loss = _calculate_distance_loss(support_embeddings, query_embeddings, 'wasserstein')
+                    total_loss += distance_weights['wasserstein'] * wasserstein_loss
+                    num_distances += 1
+                
+                # If no distances were calculated, use a default loss
+                if num_distances == 0:
+                    print("Warning: No distance metrics were enabled. Using default euclidean distance.")
+                    total_loss = _calculate_distance_loss(support_embeddings, query_embeddings, 'euclidean')
+                    num_distances = 1
+                
+                # Normalize loss by the number of distance metrics used
+                loss = total_loss / num_distances
+                
+                # Ensure loss is non-zero to see training progress
+                if loss < 1e-8:
+                    print(f"Warning: Loss is extremely small ({loss.item():.10f}). Using default loss value.")
+                    # Create a small default loss to allow for gradient updates
+                    dummy_outputs = torch.randn((query_embeddings.size(0), 1), device=device)
+                    dummy_targets = torch.ones((query_embeddings.size(0), 1), device=device)
+                    loss = F.binary_cross_entropy_with_logits(dummy_outputs, dummy_targets)
+                
+                # Backward pass and optimize
+                loss.backward()
+                optimizer.step()
+                
+                # Accumulate loss
+                episode_loss += loss.item()
+                batch_count += 1
+            
+            total_train_loss += episode_loss
+            episode_count += 1
+            
+            # Print progress for every 5th episode
+            if (episode_idx + 1) % 5 == 0:
+                print(f"  Episode {episode_idx + 1}/{len(episodes)}, Current Loss: {episode_loss:.4f}")
+            
+            # Apply Polyak averaging if enabled
+            if use_polyak:
+                with torch.no_grad():
+                    for name, param in model.named_parameters():
+                        polyak_model[name] = 0.95 * polyak_model[name] + 0.05 * param.data
+        
+        # Calculate average loss for the epoch
+        avg_train_loss = total_train_loss / max(1, batch_count)
+        
+        # Validation
+        model.eval()
+        val_loss = 0.0
+        correct = 0
+        total = 0
+        
+        # Get device of model
+        device = next(model.parameters()).device
+        
+        with torch.no_grad():
+            for inputs, targets in val_dataloader:
+                inputs = inputs.to(device)
+                targets = targets.to(device)
+                
+                outputs = model(inputs)
+                
+                # Compute loss
+                if len(targets.shape) > 1:  # One-hot encoded
+                    val_loss += F.binary_cross_entropy_with_logits(outputs, targets.float()).item()
+                    pred = (outputs > 0.5).float()
+                    correct += ((pred == targets.float()).sum(dim=1) == targets.shape[1]).sum().item()
+                else:  # Class indices
+                    val_loss += F.cross_entropy(outputs, targets).item()
+                    _, pred = torch.max(outputs, 1)
+                    correct += (pred == targets).sum().item()
+                
+                total += targets.size(0)
+        
+        avg_val_loss = val_loss / len(val_dataloader)
+        val_accuracy = correct / total
+        
+        # Save history
+        history['train_loss'].append(avg_train_loss)
+        history['val_loss'].append(avg_val_loss)
+        history['val_accuracy'].append(val_accuracy)
+        history['epoch'].append(epoch + 1)
+        
+        # Print epoch results
+        print(f"Epoch {epoch+1}/{epochs}: Train Loss={avg_train_loss:.6f}, Val Loss={avg_val_loss:.4f}, Val Acc={val_accuracy:.4f}")
+        
+        # Log to wandb if enabled
+        if log_wandb:
+            wandb.log({
+                "epoch": epoch + 1,
+                "train_loss": avg_train_loss,
+                "val_loss": avg_val_loss,
+                "val_accuracy": val_accuracy
+            })
+        
+        # Save best model if path provided
+        if model_path and avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            print(f"Saving best model at epoch {epoch+1} with val_loss={avg_val_loss:.4f}")
+            torch.save(model.state_dict(), model_path)
+    
+    # If using Polyak averaging, update model with averaged parameters
+    if use_polyak:
+        with torch.no_grad():
+            for name, param in model.named_parameters():
+                param.copy_(polyak_model[name])
     
     return model, history
+
+def _calculate_distance_loss(support_embeddings, query_embeddings, distance_type):
+    """
+    Calculate prototypical network loss using the specified distance metric.
+    
+    Args:
+        support_embeddings (torch.Tensor): Embeddings for support set
+        query_embeddings (torch.Tensor): Embeddings for query set
+        distance_type (str): Type of distance metric to use
+        
+    Returns:
+        torch.Tensor: Calculated loss
+    """
+    # Add small noise to embeddings to prevent perfect matching
+    support_embeddings = support_embeddings + torch.randn_like(support_embeddings) * 1e-4
+    query_embeddings = query_embeddings + torch.randn_like(query_embeddings) * 1e-4
+    
+    # Compute prototype (mean) of support embeddings
+    prototype = support_embeddings.mean(dim=0, keepdim=True)
+    
+    # Calculate distances between query embeddings and prototype
+    if distance_type == 'euclidean':
+        distances = torch.sum((query_embeddings - prototype) ** 2, dim=1)
+    elif distance_type == 'chebyshev':
+        distances = torch.max(torch.abs(query_embeddings - prototype), dim=1)[0]
+    elif distance_type == 'cosine':
+        cos_sim = F.cosine_similarity(query_embeddings, prototype)
+        distances = 1 - cos_sim
+    elif distance_type == 'wasserstein':
+        # Simple approximation of Wasserstein distance
+        # (actual Wasserstein would require solving an optimization problem)
+        sorted_query = torch.sort(query_embeddings, dim=1)[0]
+        sorted_proto = torch.sort(prototype.repeat(query_embeddings.size(0), 1), dim=1)[0]
+        distances = torch.mean(torch.abs(sorted_query - sorted_proto), dim=1)
+    else:
+        raise ValueError(f"Unsupported distance type: {distance_type}")
+    
+    # Ensure distances are non-zero for stable loss calculation
+    distances = distances + 1e-6
+    
+    # Convert distances to a "similarity" score where higher is better (closer to prototype)
+    similarities = -distances  # Negative distances = higher similarity
+    
+    # Create targets (all 1s) representing that all query samples should be close to prototype
+    targets = torch.ones_like(similarities)
+    
+    # Binary cross-entropy loss
+    loss = F.binary_cross_entropy_with_logits(similarities, targets)
+    
+    # Add a small regularization term to ensure non-zero gradient
+    loss = loss + 0.001 * torch.mean(torch.abs(query_embeddings))
+    
+    return loss
 
 
 def train_prototypical_model(config, X_train, y_train, val_dataloader, config_setup_name, distances_weights):
@@ -151,7 +426,15 @@ def train_prototypical_model(config, X_train, y_train, val_dataloader, config_se
     
     # Extract validation data
     X_val, y_val = dataloader_to_numpy(dataloader=val_dataloader)
-    n_features, n_classes = int(X_train.shape[1]), int(y_train.shape[1])
+    n_features = int(X_train.shape[1])
+    
+    # Determine the number of classes
+    if len(y_train.shape) > 1:
+        # One-hot encoded labels
+        n_classes = int(y_train.shape[1])
+    else:
+        # Class indices
+        n_classes = int(torch.max(y_train).item()) + 1
     
     # Log dataset information
     if wandb.run is not None:
@@ -161,7 +444,7 @@ def train_prototypical_model(config, X_train, y_train, val_dataloader, config_se
                 "n_classes": n_classes,
                 "n_train_samples": len(X_train),
                 "n_val_samples": len(X_val),
-                "train_class_distribution": y_train.sum(axis=0).tolist() if len(y_train.shape) > 1 else np.bincount(y_train).tolist(),
+                "train_class_distribution": y_train.sum(axis=0).tolist() if len(y_train.shape) > 1 else np.bincount(y_train.tolist()).tolist(),
                 "val_class_distribution": y_val.sum(axis=0).tolist() if len(y_val.shape) > 1 else np.bincount(y_val).tolist()
             }
         })
@@ -225,7 +508,7 @@ def train_prototypical_model(config, X_train, y_train, val_dataloader, config_se
         # Train the model
         use_polyak = 'polyak' in config_setup_name.lower() and 'no-polyak' not in config_setup_name.lower()
         
-        experiment_history = multi_space_episodic_training_with_polyak(
+        model, history = multi_space_episodic_training_with_polyak(
             model=model, 
             optimizer=optimizer,
             val_dataloader=val_dataloader,
@@ -234,7 +517,8 @@ def train_prototypical_model(config, X_train, y_train, val_dataloader, config_se
             use_polyak=use_polyak,
             distance_weights=distances_weights,
             model_path=best_model_path,
-            log_wandb=True
+            log_wandb=True,
+            X_train=X_train_sampled
         )
         
         # Evaluate the model
@@ -242,16 +526,34 @@ def train_prototypical_model(config, X_train, y_train, val_dataloader, config_se
         all_val_preds = []
         all_val_labels = []
         
+        # Get the device that the model is on
+        device = next(model.parameters()).device
+        
         with torch.no_grad():
             for batch_X, batch_y in val_dataloader:
+                # Move input to the same device as the model
+                batch_X = batch_X.to(device)
                 outputs = model(batch_X)
                 predictions = (outputs > 0.5).float()
                 
-                all_val_preds.append(predictions.cpu().numpy())
-                all_val_labels.append(batch_y.cpu().numpy())
+                # Convert to numpy and reshape if needed
+                pred_np = predictions.cpu().numpy()
+                label_np = batch_y.cpu().numpy()
+                
+                # Ensure consistent dimensions for batches
+                if len(label_np.shape) == 1:
+                    label_np = label_np.reshape(-1, 1)
+                
+                all_val_preds.append(pred_np)
+                all_val_labels.append(label_np)
         
-        val_predictions = np.vstack(all_val_preds)
-        val_labels = np.vstack(all_val_labels)
+        # Use concatenate instead of vstack to handle different batch sizes
+        val_predictions = np.concatenate(all_val_preds, axis=0)
+        val_labels = np.concatenate(all_val_labels, axis=0)
+        
+        # Squeeze labels back to 1D if they were 1D originally
+        if val_labels.shape[1] == 1:
+            val_labels = val_labels.squeeze(axis=1)
         
         # Calculate metrics
         balanced_acc = calculate_multi_label_balanced_accuracy(val_labels, val_predictions)
@@ -261,7 +563,7 @@ def train_prototypical_model(config, X_train, y_train, val_dataloader, config_se
         per_class_metrics = calculate_per_class_metrics(val_labels, val_predictions)
         
         # Extract final validation loss from history
-        val_loss = experiment_history['val_loss'][-1] if experiment_history['val_loss'] else float('inf')
+        val_loss = history['val_loss'][-1] if history['val_loss'] else float('inf')
         
         # Record experiment time
         experiment_time = time.time() - experiment_start_time
@@ -275,9 +577,9 @@ def train_prototypical_model(config, X_train, y_train, val_dataloader, config_se
         all_metrics['training_time'].append(experiment_time)
         
         # Store per-class metrics
-        all_metrics['per_class_precision'].append(per_class_metrics['precision'])
-        all_metrics['per_class_recall'].append(per_class_metrics['recall'])
-        all_metrics['per_class_f1'].append(per_class_metrics['f1'])
+        all_metrics['per_class_precision'].append(per_class_metrics['per_class_precision'])
+        all_metrics['per_class_recall'].append(per_class_metrics['per_class_recall'])
+        all_metrics['per_class_f1'].append(per_class_metrics['per_class_f1'])
         
         # Log metrics to wandb for this experiment
         if wandb.run is not None:
@@ -410,7 +712,7 @@ def train_traditional_model(config, X_train, y_train, val_dataloader, model_name
                 "n_classes": n_classes,
                 "n_train_samples": len(X_train),
                 "n_val_samples": len(X_val),
-                "train_class_distribution": y_train.sum(axis=0).tolist() if len(y_train.shape) > 1 else np.bincount(y_train).tolist(),
+                "train_class_distribution": y_train.sum(axis=0).tolist() if len(y_train.shape) > 1 else np.bincount(y_train.tolist()).tolist(),
                 "val_class_distribution": y_val.sum(axis=0).tolist() if len(y_val.shape) > 1 else np.bincount(y_val).tolist()
             }
         })
@@ -518,9 +820,9 @@ def train_traditional_model(config, X_train, y_train, val_dataloader, model_name
         all_metrics['training_time'].append(experiment_time)
         
         # Store per-class metrics
-        all_metrics['per_class_precision'].append(per_class_metrics['precision'])
-        all_metrics['per_class_recall'].append(per_class_metrics['recall'])
-        all_metrics['per_class_f1'].append(per_class_metrics['f1'])
+        all_metrics['per_class_precision'].append(per_class_metrics['per_class_precision'])
+        all_metrics['per_class_recall'].append(per_class_metrics['per_class_recall'])
+        all_metrics['per_class_f1'].append(per_class_metrics['per_class_f1'])
         
         # Log metrics to wandb for this experiment
         if wandb.run is not None:

@@ -1,6 +1,8 @@
 # Deep Learning Configuration
-# Note: Dataset is now specified via command line: --dataset DATASET_NAME
 mode: "prototypical"
+
+# Dataset configuration
+datasets_config: "utils/datasets_config.yaml"  # Path to the dataset configurations
 
 # Deep Learning configuration
 dl_config:
@@ -34,3 +36,11 @@ params:
 output:
   train-history: "train_history/dl" # Directory for training outputs
   best_models: "models/saved_models/dl/best_model_" # Directory for saving best models
+
+# Define all scenarios to run
+scenarios:
+  - "euclidean"
+  - "chebyshev"
+  - "cosine"
+  - "wasserstein"
+  - "all-equal-weights"

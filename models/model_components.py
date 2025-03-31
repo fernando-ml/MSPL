@@ -105,3 +105,15 @@ class MLP_MultiLabel(BaseModel):
         # Output layer
         x = self.output_layer(embedding)
         return x
+
+    def get_embeddings(self, inputs):
+        """
+        Get embeddings for inputs by using the forward method with return_embedding=True.
+        
+        Args:
+            inputs (torch.Tensor): Input data
+            
+        Returns:
+            torch.Tensor: Embeddings
+        """
+        return self.forward(inputs, return_embedding=True)

@@ -14,9 +14,8 @@ import wandb
 from sklearn.metrics import confusion_matrix
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from typing import Dict, List, Optional, Union, Any
 import torch
-from typing import Dict, List, Union, Tuple, Any, Optional
-
 
 def init_wandb(config: Dict, 
               run_name: str, 
@@ -34,6 +33,11 @@ def init_wandb(config: Dict,
     Returns:
         wandb.Run: Initialized wandb run
     """
+    # Add datetime to run name for better tracking
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    run_name_with_timestamp = f"{run_name}_{timestamp}"
+    
     # Initialize wandb configuration
     wandb_config = {
         "dataset": config.get('selected-dataset', 'unknown'),
@@ -73,7 +77,7 @@ def init_wandb(config: Dict,
     # Initialize the run
     run = wandb.init(
         project=project_name,
-        name=run_name,
+        name=run_name_with_timestamp,
         config=wandb_config,
         reinit=True,  # Allow reinitializing if needed
     )
@@ -113,56 +117,53 @@ def log_metrics(metrics: Dict[str, Union[float, List[float]]],
     wandb.log(log_dict, step=step)
 
 
-def log_confusion_matrix(y_true: np.ndarray, 
-                         y_pred: np.ndarray, 
-                         class_names: Optional[List[str]] = None,
-                         title: str = "Confusion Matrix") -> None:
+def log_confusion_matrix(y_true, y_pred, title='Confusion Matrix', class_names=None):
     """
-    Log confusion matrix visualization to wandb.
+    Create and log a confusion matrix to wandb
     
     Args:
-        y_true (np.ndarray): True labels
-        y_pred (np.ndarray): Predicted labels
-        class_names (List[str], optional): List of class names
-        title (str): Title for the plot
+        y_true: Ground truth labels
+        y_pred: Predicted labels
+        title: Title for the plot
+        class_names: List of class names
     """
-    # For multi-label, we need to handle differently
-    if len(y_true.shape) > 1 and y_true.shape[1] > 1:
-        # This is multi-label, log each class individually
-        for i in range(y_true.shape[1]):
-            class_name = class_names[i] if class_names else f"Class {i}"
-            cm = confusion_matrix(y_true[:, i], y_pred[:, i])
-            
-            # Create a figure and axes
-            fig, ax = plt.subplots(figsize=(8, 6))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-            plt.title(f"{title} - {class_name}")
-            plt.ylabel('True Label')
-            plt.xlabel('Predicted Label')
-            
-            # Log to wandb
-            wandb.log({f"confusion_matrix/{class_name}": wandb.Image(fig)})
-            plt.close(fig)
-    else:
-        # Single-label classification
-        cm = confusion_matrix(y_true, y_pred)
-        
-        # Create a figure and axes
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-        plt.title(title)
-        plt.ylabel('True Label')
-        plt.xlabel('Predicted Label')
-        
-        # Use class names if provided
-        if class_names:
-            tick_marks = np.arange(len(class_names))
-            plt.xticks(tick_marks + 0.5, class_names, rotation=45, ha='right')
-            plt.yticks(tick_marks + 0.5, class_names, rotation=0)
-        
-        # Log to wandb
-        wandb.log({"confusion_matrix": wandb.Image(fig)})
-        plt.close(fig)
+    # Convert to numpy arrays if they're torch tensors
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
+    
+    # Ensure both are in the same format (one-hot or indices)
+    if len(y_true.shape) > 1 and len(y_pred.shape) > 1:
+        # Both are one-hot encoded, convert to class indices
+        y_true = np.argmax(y_true, axis=1)
+        y_pred = np.argmax(y_pred, axis=1)
+    elif len(y_true.shape) > 1:
+        # y_true is one-hot, y_pred is indices
+        y_true = np.argmax(y_true, axis=1)
+    elif len(y_pred.shape) > 1:
+        # y_pred is one-hot, y_true is indices
+        y_pred = np.argmax(y_pred, axis=1)
+    
+    # Create confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+    
+    # Create a figure and axes
+    fig, ax = plt.subplots(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+    plt.title(title)
+    plt.ylabel('True Label')
+    plt.xlabel('Predicted Label')
+    
+    # Use class names if provided
+    if class_names:
+        tick_marks = np.arange(len(class_names))
+        plt.xticks(tick_marks + 0.5, class_names, rotation=45, ha='right')
+        plt.yticks(tick_marks + 0.5, class_names, rotation=0)
+    
+    # Log to wandb
+    wandb.log({"confusion_matrix": wandb.Image(fig)})
+    plt.close(fig)
 
 
 def log_per_class_metrics(metrics_dict: Dict[str, np.ndarray], 
@@ -198,8 +199,8 @@ def log_per_class_metrics(metrics_dict: Dict[str, np.ndarray],
     plt.close(fig)
 
 
-def log_embeddings(features: np.ndarray, 
-                  labels: np.ndarray,
+def log_embeddings(features, 
+                  labels,
                   method: str = 'tsne',
                   class_names: Optional[List[str]] = None,
                   name: str = "embeddings") -> None:
@@ -207,49 +208,62 @@ def log_embeddings(features: np.ndarray,
     Log embeddings visualization using t-SNE or PCA.
     
     Args:
-        features (np.ndarray): Feature vectors
-        labels (np.ndarray): Labels for each feature vector
+        features: Feature vectors (numpy array or torch.Tensor)
+        labels: Labels for each feature vector (numpy array or torch.Tensor)
         method (str): Dimensionality reduction method ('tsne' or 'pca')
         class_names (List[str], optional): List of class names
         name (str): Name for the plot
     """
+    # Convert torch tensors to numpy arrays if necessary
+    if isinstance(features, torch.Tensor):
+        features = features.detach().cpu().numpy()
+    if isinstance(labels, torch.Tensor):
+        labels = labels.detach().cpu().numpy()
+    
     # Convert labels to 1D if needed
     if len(labels.shape) > 1:
         # If multi-label, use argmax to get primary class
         labels = np.argmax(labels, axis=1)
     
-    # Apply dimensionality reduction
-    if method.lower() == 'tsne':
-        reducer = TSNE(n_components=2, random_state=42)
-    else:  # PCA as default fallback
-        reducer = PCA(n_components=2, random_state=42)
-    
-    # Reduce dimensionality
-    reduced_features = reducer.fit_transform(features)
-    
-    # Create DataFrame for plotting
-    df = pd.DataFrame(reduced_features, columns=['x', 'y'])
-    df['label'] = labels
-    
-    if class_names:
-        df['class'] = df['label'].apply(lambda x: class_names[x] if x < len(class_names) else f"Class {x}")
-    else:
-        df['class'] = df['label'].apply(lambda x: f"Class {x}")
-    
-    # Create plot
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    for label, group in df.groupby('label'):
-        class_name = class_names[label] if class_names and label < len(class_names) else f"Class {label}"
-        ax.scatter(group['x'], group['y'], label=class_name, alpha=0.8)
-    
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax.set_title(f"{method.upper()} Visualization of {name}")
-    plt.tight_layout()
-    
-    # Log to wandb
-    wandb.log({f"{name}_{method}": wandb.Image(fig)})
-    plt.close(fig)
+    try:
+        # Apply dimensionality reduction
+        if method.lower() == 'tsne':
+            reducer = TSNE(n_components=2, random_state=42)
+        else:  # PCA as default fallback
+            reducer = PCA(n_components=2, random_state=42)
+        
+        # Reduce dimensionality
+        reduced_features = reducer.fit_transform(features)
+        
+        # Create DataFrame for plotting
+        df = pd.DataFrame({
+            'x': reduced_features[:, 0],
+            'y': reduced_features[:, 1],
+            'label': labels
+        })
+        
+        # Create a scatter plot
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Get unique classes
+        unique_classes = np.unique(labels)
+        
+        # Plot each class with a different color
+        for i, cls in enumerate(unique_classes):
+            idx = df['label'] == cls
+            class_name = class_names[cls] if class_names and cls < len(class_names) else f"Class {cls}"
+            ax.scatter(df.loc[idx, 'x'], df.loc[idx, 'y'], label=class_name, alpha=0.7)
+        
+        ax.legend()
+        plt.title(f"{name.capitalize()} ({method.upper()})")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        
+        # Log to wandb
+        wandb.log({f"{name}_{method}": wandb.Image(fig)})
+        plt.close(fig)
+    except Exception as e:
+        print(f"Could not log embeddings: {str(e)}")
 
 
 def log_distance_distributions(prototypes: torch.Tensor, 
