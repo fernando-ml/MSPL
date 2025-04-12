@@ -13,10 +13,40 @@ class DatasetManager:
     def __init__(self, config):
         self.selected_dataset = config['selected-dataset']
         self.val_batch_size = config['params']['val-batch-size']
+        self.datasets_config = self._load_datasets_config()
+        self.current_dataset_config = self._get_current_dataset_config()
         self.loaded_dataset = None
         self.target_column = None
 
         self.get_data()
+
+    def _load_datasets_config(self):
+        """Load dataset configurations from YAML file."""
+        # Assuming the yaml file is in utils relative to the project root
+        # Adjust the path if necessary based on where main.py is run from
+        config_path = os.path.join(os.path.dirname(
+            __file__), '..', 'utils', 'datasets_config.yaml')
+        if not os.path.exists(config_path):
+            # Fallback if running from project root
+            config_path = 'utils/datasets_config.yaml'
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(
+                f"Could not find datasets_config.yaml at expected locations.")
+
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f)
+
+    def _get_current_dataset_config(self):
+        """Get configuration for the currently selected dataset."""
+        normalized_dataset_name = self.selected_dataset.replace(
+            '-', '').replace(' ', '').lower()
+        for dataset_config in self.datasets_config:
+            normalized_config_name = dataset_config['name'].replace(
+                '-', '').replace(' ', '').lower()
+            if normalized_config_name == normalized_dataset_name:
+                return dataset_config
+        raise ValueError(
+            f"Dataset '{self.selected_dataset}' not found in configuration")
 
     def get_data(self):
         self.datasets = yaml.safe_load(open("utils/datasets_config.yaml"))
@@ -36,23 +66,41 @@ class DatasetManager:
             self.columns_to_drop = []
 
     def preprocess_data(self):
-        if isinstance(self.loaded_dataset, tuple):
-            train_data, validation_data = self.loaded_dataset[0], self.loaded_dataset[1]
+
+        print(f"Loading dataset: {self.selected_dataset}")
+        target_column = self.current_dataset_config['target_column']
+        columns_to_drop = self.current_dataset_config.get(
+            'columns-to-drop', [])
+
+        # Load data
+        if 'path_train' in self.current_dataset_config and 'path_val' in self.current_dataset_config:
+            print(f"Loading separate train/val files:")
+            print(f"  Train: {self.current_dataset_config['path_train']}")
+            print(f"  Val:   {self.current_dataset_config['path_val']}")
+            train_df = pd.read_parquet(
+                self.current_dataset_config['path_train'])
+            val_df = pd.read_parquet(self.current_dataset_config['path_val'])
+            train_val_split_done = True
         else:
-            train_data, validation_data = train_test_split(
-                self.loaded_dataset, test_size=0.5)
+            print(
+                f"Loading single file: {self.current_dataset_config['path']}")
+            df = pd.read_parquet(self.current_dataset_config['path'])
+            # Split data if loaded from a single file
+            print("Splitting data into train/validation (50/50 split, stratified)")
+            train_df, val_df = train_test_split(df, test_size=0.5, random_state=42,
+                                                stratify=df[target_column])
 
         # Drop unnecessary columns - specificied in datasets_config.yaml
-        train_data.drop(self.columns_to_drop, axis=1, inplace=True)
-        validation_data.drop(self.columns_to_drop, axis=1, inplace=True)
+        train_df.drop(self.columns_to_drop, axis=1, inplace=True)
+        val_df.drop(self.columns_to_drop, axis=1, inplace=True)
 
         # Separate target column
-        y_train_data = pd.get_dummies(train_data[self.target_column])
-        y_validation_data = pd.get_dummies(validation_data[self.target_column])
+        y_train_data = pd.get_dummies(train_df[self.target_column])
+        y_validation_data = pd.get_dummies(val_df[self.target_column])
 
         # Drop target column from feature sets
-        X_train_data = train_data.drop(self.target_column, axis=1)
-        X_validation_data = validation_data.drop(self.target_column, axis=1)
+        X_train_data = train_df.drop(self.target_column, axis=1)
+        X_validation_data = val_df.drop(self.target_column, axis=1)
 
         # Select text columns
         text_cols = X_train_data.select_dtypes(include='object').columns

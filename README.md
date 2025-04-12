@@ -39,10 +39,11 @@ python main.py config_dl.yaml --dataset CIC-IDS-2017 --mode prototypical --epoch
 Place the raw datasets in the **data** folder. The processed parquets will be stored in `data/parquets`.
 
 Supported datasets:
-- CIC-IDS-2017
-- UNSW-NB15 
+
 - CICEVSE_Network2024
-- CICIoV
+- CICEVSE_PowerB2024
+- CICIoV2024
+- CICIDS2017
 
 ## Configuration
 
@@ -99,6 +100,7 @@ output:
 The project includes comprehensive integration with Weights & Biases for experiment tracking. See [README_WANDB.md](README_WANDB.md) for detailed instructions.
 
 Key logged metrics include:
+
 - Training and validation performance metrics
 - Per-class metrics and confusion matrices
 - Feature importance for traditional models
