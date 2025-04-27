@@ -58,3 +58,5 @@ Thumbs.db
 .DS_Store
 
 wandb
+artifacts
+models/saved_models

@@ -2,23 +2,57 @@
 - name: "CICEVSE_Network2024"
   path: "data/parquets/cicevse_network.parquet"
   target_column: "target"
-  columns-to-drop: ['id', 'expiration_id', 'src_ip', 'src_mac', 'src_oui', 'src_port',
-       'dst_ip', 'dst_mac', 'dst_oui', 'dst_port', 'protocol', 'ip_version',
-       'vlan_id', 'tunnel_id', 'requested_server_name', 'client_fingerprint', 'server_fingerprint',
-       'user_agent', 'content_type']
+  columns-to-drop:
+    [
+      "id",
+      "expiration_id",
+      "src_ip",
+      "src_mac",
+      "src_oui",
+      "src_port",
+      "dst_ip",
+      "dst_mac",
+      "dst_oui",
+      "dst_port",
+      "protocol",
+      "ip_version",
+      "vlan_id",
+      "tunnel_id",
+      "application_name",
+      "application_category_name",
+      "application_is_guessed",
+      "application_confidence",
+      "requested_server_name",
+      "client_fingerprint",
+      "server_fingerprint",
+      "user_agent",
+      "content_type",
+    ]
 
 - name: "CICEVSE_PowerB2024"
   path: "data/parquets/cicevse_power.parquet"
   target_column: "Attack"
-  columns-to-drop: ['time', 'Attack-Group', 'Label', 'interface'] 
+  columns-to-drop: ["time", "Attack-Group", "Label", "interface"]
 
 - name: "CICIoV2024"
   path: "data/parquets/ciciov.parquet"
   target_column: "target"
+  columns-to-drop: ["ID", "label", "category", "specific_class"]
 
 - name: "CICIDS2017"
   path_train: "data/parquets/train_set.parquet"
   path_val: "data/parquets/crossval_set.parquet"
   target_column: "label"
-  columns-to-drop: ["flag_urg", "fwd_flag_urg",
-                       "bwd_flag_urg", "flow_id", "timestamp", "src_addr", "dst_addr"]
+  columns-to-drop:
+    [
+      "flow_id",
+      "src_addr",
+      "src_port",
+      "dst_addr",
+      "dst_port",
+      "ip_prot",
+      "timestamp",
+      "flag_urg",
+      "fwd_flag_urg",
+      "bwd_flag_urg",
+    ]
