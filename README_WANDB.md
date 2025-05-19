@@ -5,6 +5,7 @@ This guide explains how to use the Weights & Biases (WandB) logging features int
 ## Setup
 
 1. Install the required dependencies:
+
    ```
    pip install -r requirements.txt
    ```
@@ -24,12 +25,13 @@ The project now automatically logs all training metrics and visualizations to Wa
 python main.py --dataset CIC-IDS-2017 --mode prototypical
 
 # Run a traditional ML experiment on the UNSW-NB15 dataset
-python main.py --dataset UNSW-NB15 --mode traditional
+python main.py --dataset CIC-IDS-2017 --mode traditional
 ```
 
 ## Tracked Metrics & Visualizations
 
 ### General Metrics
+
 - Balanced accuracy (with std dev across experiments)
 - F1-score (macro & micro)
 - Matthews Correlation Coefficient (MCC)
@@ -38,6 +40,7 @@ python main.py --dataset UNSW-NB15 --mode traditional
 - Dataset statistics
 
 ### Per-Class Metrics
+
 - Precision
 - Recall
 - F1-score
@@ -45,6 +48,7 @@ python main.py --dataset UNSW-NB15 --mode traditional
 - Class distribution
 
 ### Visualizations
+
 - Confusion matrices
 - Per-class metrics heatmaps
 - Feature importance (for traditional ML models)
@@ -55,6 +59,7 @@ python main.py --dataset UNSW-NB15 --mode traditional
 ## Organization
 
 Experiments are organized in WandB according to:
+
 - Project: Each approach (prototypical or traditional) has its own project
 - Run name: Automatically generated based on dataset and model configuration
 - Tags: Standard metrics tags are applied to enable filtering and comparison

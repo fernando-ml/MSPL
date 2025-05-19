@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt
 
 from models.model_components import MLP_MultiLabel
 from utils.utils import print_section, stratified_sample, dataloader_to_numpy
+from utils.datasets import dataloader_to_numpy as other_dataloader_to_numpy
 from utils.config_parser import sanitize_filename
 from utils.metrics import (
     calculate_multi_label_balanced_accuracy,
@@ -599,33 +600,30 @@ def train_traditional_model(config, X_train, y_train, val_dataloader, model_name
     print_section(f"Training traditional model: {model_name}")
 
     # Extract validation data
-    X_val, y_val = dataloader_to_numpy(dataloader=val_dataloader)
+    X_val, y_val = other_dataloader_to_numpy(dataloader=val_dataloader)
+    n_features = int(X_train.shape[1])
     n_classes = int(y_train.shape[1]) if len(
         y_train.shape) > 1 else len(np.unique(y_train))
 
     # Log dataset information
     if wandb.run is not None:
-        wandb.log({
-            "dataset_info": {
-                "n_features": X_train.shape[1],
-                "n_classes": n_classes,
-                "n_train_samples": len(X_train),
-                "n_val_samples": len(X_val),
-                "train_class_distribution": y_train.sum(axis=0).tolist() if len(y_train.shape) > 1 else np.bincount(y_train.tolist()).tolist(),
-                "val_class_distribution": y_val.sum(axis=0).tolist() if len(y_val.shape) > 1 else np.bincount(y_val).tolist()
-            }
-        })
+        run.summary["dataset_info"] = {
+            "n_features": n_features,
+            "n_classes": n_classes,
+            "n_train_samples": len(X_train),
+            "n_val_samples": len(X_val),
+            "train_class_distribution": y_train.sum(axis=0).tolist() if len(y_train.shape) > 1 else np.bincount(y_train.tolist()).tolist(),
+            "val_class_distribution": y_val.sum(axis=0).tolist() if len(y_val.shape) > 1 else np.bincount(y_val).tolist()
+        }
 
     # Metrics storage
     all_metrics = {
-        'balanced_accuracy': [],
+        'n_experiment': [],
+        'val_accuracy': [],
         'val_f1': [],
         'val_AUPRC': [],
         'val_MCC': [],
         'training_time': [],
-        'per_class_precision': [],
-        'per_class_recall': [],
-        'per_class_f1': []
     }
 
     # Get model based on name
@@ -663,152 +661,35 @@ def train_traditional_model(config, X_train, y_train, val_dataloader, model_name
             sample_per_class=config['params']['sample_per_class']
         )
 
-        # Convert to numpy
-        X_train_np = X_train_sampled.cpu().numpy() if isinstance(
-            X_train_sampled, torch.Tensor) else X_train_sampled
-        y_train_np = y_train_sampled.cpu().numpy() if isinstance(
-            y_train_sampled, torch.Tensor) else y_train_sampled
-
-        # Convert X_val, y_val to numpy if they're not already
-        X_val_np = X_val.cpu().numpy() if isinstance(X_val, torch.Tensor) else X_val
-        y_val_np = y_val.cpu().numpy() if isinstance(y_val, torch.Tensor) else y_val
-
         # Create model
         model = model_class(**model_params)
 
-        # For multi-label problems, we need to train one model per label
-        if len(y_train_np.shape) > 1 and y_train_np.shape[1] > 1:
-            print(
-                f"Multi-label problem detected with {y_train_np.shape[1]} labels")
-            models = []
-            y_pred = np.zeros_like(y_val_np)
-
-            # Train a model for each label
-            for j in range(y_train_np.shape[1]):
-                label_model = model_class(**model_params)
-                label_model.fit(X_train_np, y_train_np[:, j])
-                models.append(label_model)
-                y_pred[:, j] = label_model.predict(X_val_np)
-
-                # Log individual label metrics if available
-                if wandb.run is not None:
-                    label_metrics = calculate_metrics(
-                        y_val_np[:, j], y_pred[:, j])
-                    wandb.log({
-                        f"label_{j}/precision": label_metrics['precision_macro'],
-                        f"label_{j}/recall": label_metrics['recall_macro'],
-                        f"label_{j}/f1": label_metrics['f1_macro'],
-                        f"label_{j}/accuracy": label_metrics['accuracy']
-                    })
-        else:
-            # Single-label problem
-            model.fit(X_train_np, y_train_np)
-            y_pred = model.predict(X_val_np)
+        # Single-label problem
+        model.fit(X_train_sampled, np.argmax(y_train_sampled, axis=1))
+        y_pred = model.predict(X_val)
 
         # Calculate metrics
         balanced_acc = calculate_multi_label_balanced_accuracy(
-            y_val_np, y_pred)
-        metrics_dict = calculate_metrics(y_val_np, y_pred)
-
-        # Calculate per-class metrics
-        per_class_metrics = calculate_per_class_metrics(y_val_np, y_pred)
+            y_val, y_pred)
+        metrics_dict = calculate_metrics(y_val, y_pred)
 
         # Record experiment time
         experiment_time = time.time() - experiment_start_time
 
         # Store metrics
-        all_metrics['balanced_accuracy'].append(balanced_acc)
+        all_metrics['n_experiment'].append(i)
+        all_metrics['val_accuracy'].append(metrics_dict['balanced_accuracy'])
         all_metrics['val_f1'].append(metrics_dict['f1_macro'])
         all_metrics['val_AUPRC'].append(metrics_dict['auprc'])
         all_metrics['val_MCC'].append(metrics_dict['mcc'])
         all_metrics['training_time'].append(experiment_time)
 
-        # Store per-class metrics
-        all_metrics['per_class_precision'].append(
-            per_class_metrics['per_class_precision'])
-        all_metrics['per_class_recall'].append(
-            per_class_metrics['per_class_recall'])
-        all_metrics['per_class_f1'].append(per_class_metrics['per_class_f1'])
-
-        # Log metrics to wandb for this experiment
-        if wandb.run is not None:
-            experiment_metrics = {
-                "experiment": i,
-                "balanced_accuracy": balanced_acc,
-                "val_f1_macro": metrics_dict['f1_macro'],
-                "val_f1_micro": metrics_dict['f1_micro'],
-                "val_precision_macro": metrics_dict['precision_macro'],
-                "val_recall_macro": metrics_dict['recall_macro'],
-                "val_AUPRC": metrics_dict['auprc'],
-                "val_MCC": metrics_dict['mcc'],
-                "training_time": experiment_time
-            }
-
-            # Log experiment metrics
-            log_metrics(experiment_metrics)
-
-            # Log confusion matrix
-            log_confusion_matrix(y_val_np, y_pred,
-                                 title=f"Confusion Matrix - Experiment {i+1}")
-
-            # Log per-class metrics
-            log_per_class_metrics(per_class_metrics,
-                                  prefix=f"exp_{i+1}_")
-
-            # Visualize feature importance if available
-            if hasattr(model, 'feature_importances_'):
-                # Create sorted feature importance plot
-                importances = model.feature_importances_
-                indices = np.argsort(importances)[::-1]
-
-                plt.figure(figsize=(10, 8))
-                plt.title(f'Feature Importances - {model_name}')
-                plt.bar(range(min(20, len(indices))),
-                        importances[indices[:20]], align='center')
-                plt.xticks(range(min(20, len(indices))),
-                           indices[:20], rotation=90)
-                plt.tight_layout()
-
-                # Log to wandb
-                wandb.log({f"feature_importance/exp_{i+1}": wandb.Image(plt)})
-                plt.close()
-            elif hasattr(model, 'coef_') and model_name == "logistic_regression":
-                # For logistic regression, visualize coefficients
-                coefs = model.coef_
-
-                # If multi-class, we'll visualize the most significant coefficients for each class
-                if len(coefs.shape) > 1 and coefs.shape[0] > 1:
-                    # For now, just visualize the first few classes
-                    for c in range(min(5, coefs.shape[0])):
-                        plt.figure(figsize=(10, 6))
-                        plt.title(f'Feature Coefficients - Class {c}')
-
-                        # Plot top positive and negative coefficients
-                        coef = coefs[c]
-                        top_positive_idx = np.argsort(coef)[-10:]
-                        top_negative_idx = np.argsort(coef)[:10]
-
-                        plt.bar(
-                            range(10), coef[top_positive_idx], color='green', align='center')
-                        plt.bar(
-                            range(10, 20), coef[top_negative_idx], color='red', align='center')
-                        plt.xticks(range(20),
-                                   [f"Pos{i}" for i in top_positive_idx] +
-                                   [f"Neg{i}" for i in top_negative_idx],
-                                   rotation=90)
-                        plt.tight_layout()
-
-                        # Log to wandb
-                        wandb.log(
-                            {f"feature_coefficients/class_{c}/exp_{i+1}": wandb.Image(plt)})
-                        plt.close()
-
         print(f"Experiment {i+1} balanced accuracy: {balanced_acc:.4f}")
 
     # Calculate aggregate metrics
     best_metrics = {
-        'balanced_accuracy': np.mean(all_metrics['balanced_accuracy']),
-        'balanced_accuracy_std': np.std(all_metrics['balanced_accuracy']),
+        'val_balanced_accuracy': np.mean(all_metrics['val_accuracy']),
+        'val_balanced_accuracy_std': np.std(all_metrics['val_accuracy']),
         'val_f1': np.mean(all_metrics['val_f1']),
         'val_AUPRC': np.mean(all_metrics['val_AUPRC']),
         'val_MCC': np.mean(all_metrics['val_MCC']),
@@ -818,34 +699,15 @@ def train_traditional_model(config, X_train, y_train, val_dataloader, model_name
 
     # Log final aggregate metrics to wandb
     if wandb.run is not None:
-        log_metrics(best_metrics, prefix="final_")
+        table_data_df = pd.DataFrame(all_metrics)
+        metrics_table = wandb.Table(dataframe=table_data_df)
+        wandb.log({"experiment_summary_table": metrics_table})
 
-        # Log distribution of results
-        for metric_name in ['balanced_accuracy', 'val_f1', 'val_AUPRC', 'val_MCC']:
-            if len(all_metrics[metric_name]) > 1:
-                fig, ax = plt.subplots()
-                ax.hist(all_metrics[metric_name], bins=10)
-                ax.set_title(f"Distribution of {metric_name}")
-                ax.set_xlabel(metric_name)
-                ax.set_ylabel("Frequency")
-                wandb.log({f"distribution/{metric_name}": wandb.Image(fig)})
-                plt.close(fig)
-
-        # Final per-class metrics
-        avg_per_class_metrics = {
-            'precision': np.mean(all_metrics['per_class_precision'], axis=0),
-            'recall': np.mean(all_metrics['per_class_recall'], axis=0),
-            'f1': np.mean(all_metrics['per_class_f1'], axis=0)
-        }
-
-        log_per_class_metrics(avg_per_class_metrics, prefix="final_")
-
-        # Finish the wandb run
         wandb.finish()
 
     print_section("Training Complete")
     print(
-        f"Final balanced accuracy: {best_metrics['balanced_accuracy']:.4f} ± {best_metrics['balanced_accuracy_std']:.4f}")
+        f"Final balanced accuracy: {best_metrics['val_balanced_accuracy']:.4f} ± {best_metrics['val_balanced_accuracy_std']:.4f}")
 
     return best_metrics
 
