@@ -4,9 +4,6 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
-MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI")
-MLFLOW_EXPERIMENT_NAME = "DoS Project"
-
 
 # config.py
 

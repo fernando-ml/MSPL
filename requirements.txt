@@ -1,6 +1,7 @@
 numpy
 pandas
-scikit-learn
+wandb
 torch
-mlflow 
 psycopg2-binary
+python-dotenv
+scikit-learn==1.6.1

@@ -1,3 +1,6 @@
+wandb/
+artifacts/
+results/
 train_history/
 bk/
 data/raw/*

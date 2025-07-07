@@ -15,6 +15,7 @@
 - name: "CICIoV2024"
   path: "data/parquets/ciciov.parquet"
   target_column: "target"
+  columns-to-drop: ["ID", "label", "category", "specific_class"]
 
 - name: "CICIDS2017"
   path_train: "data/parquets/train_set.parquet"

@@ -1,0 +1,45 @@
+# Deep Learning Configuration
+mode: "prototypical"
+
+# Dataset configuration
+datasets_config: "utils/datasets_config.yaml" # Path to the dataset configurations
+
+# Deep Learning configuration
+dl_config:
+  # Polyak values to test
+  polyak_values:
+    - true
+    - false
+
+  # Weight configurations to test
+  weights_configs:
+    - ["1", "0", "0", "0"]
+    - ["0", "0", "0", "1"]
+    - ["1/2", "0", "1/2", "0"]
+    - ["0", "1/2", "1/2", "0"]
+
+# Parameters
+params:
+  train-batch-size: 32
+  val-batch-size: 512
+  epochs: 3
+  lr: 0.005
+  n_episodes: 200
+  n_support: 40
+  n_query: 20
+  n_experiments: 4
+  n_samples: 200
+  sample_per_class: 2
+
+# Output configuration
+output:
+  train-history: "train_history/dl" # Directory for training outputs
+  best_models: "models/saved_models/dl/best_model_" # Directory for saving best models
+
+# Define all scenarios to run
+scenarios:
+  - "euclidean"
+  - "chebyshev"
+  - "cosine"
+  - "wasserstein"
+  - "all-equal-weights"
