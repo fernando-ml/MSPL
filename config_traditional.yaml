@@ -1,0 +1,34 @@
+# Traditional ML Configuration
+mode: "traditional"
+
+# Dataset configuration
+datasets_config: "utils/datasets_config.yaml"  # Path to the dataset configurations
+
+# Traditional ML configuration
+nonDL_config:
+  # ML models to test
+  model_types:
+    - "logistic_regression"
+    - "random_forest"
+    - "gradient_boosting"
+    - "knn"
+
+# Parameters
+params:
+  train-batch-size: 512
+  val-batch-size: 512
+  n_experiments: 40
+  n_samples: 200
+  sample_per_class: 2
+
+# Output configuration
+output:
+  train-history: "train_history/traditional" # Directory for training outputs
+  best_models: "models/saved_models/traditional/best_model_" # Directory for saving best models
+
+# Define all scenarios to run (each is a model type from nonDL_config.model_types)
+scenarios:
+  - "logistic_regression"
+  - "random_forest"
+  - "gradient_boosting"
+  - "knn"
