@@ -2,13 +2,13 @@
 
 ## Run Vanilla
 
-To run the prototypical mode do:
+To run the prototypical mode, do:
 
 ```bash
 python main.py config.yaml
 ```
 
-To run the baseline mode do:
+To run the baseline mode, do:
 
 ```bash
 python main.py baseline_config.yaml
@@ -16,11 +16,11 @@ python main.py baseline_config.yaml
 
 ## Data
 
-Place the raw datsets in the **data** folder. If the parquets don't exists yet, use the combine_data.py to create the parquets for CICIoV and CICEVSE2024. The processed parquets will be placed in `data\parquets`.
+Place the raw datasets in the **data** folder. If the parquets don't exist yet, use the combine_data.py to create the parquets for CICIoV and CICEVSE2024. The processed parquets will be placed in `data\parquets`.
 
 ## Utils
 
-See `utils\utils.py` for dataset loading and preprocesing functions.
+See `utils\utils.py` for dataset loading and preprocessing functions.
 
 ## Experiments Definition
 
@@ -50,12 +50,4 @@ scenarios:
 output:
   train:
   best_models:
-```
-
-## FUTURE: ML Flow
-
-to start the server using postgres as backend
-
-```bash
-mlflow server --backend-store-uri postgresql://uri
 ```
