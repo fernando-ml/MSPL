@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 import os
 
-df = pd.read_csv('/Users/femartinez/Documents/Research/Dos Project/data/EVs/Power Consumption/EVSE-B-PowerCombined.csv')
+df = pd.read_csv('data/EVs/Power Consumption/EVSE-B-PowerCombined.csv')
 columns_to_drop_power_consumption = ['time', 'Attack-Group', 'Label', 'interface']
 target_column_power_consumption = "Attack"
 df.drop(columns_to_drop_power_consumption, axis=1, inplace=True)
