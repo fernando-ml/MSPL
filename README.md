@@ -1,4 +1,4 @@
-# DoS Project
+# Multi-Space Prototypical Learning (MSPL)
 
 ## Run Vanilla
 
